@@ -1,34 +1,35 @@
-#include "WiFi.h"
-#include "HTTPClient.h"
-#include "NetworkClientSecure.h"
-#include "ArduinoJson.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <NetworkClientSecure.h>
+#include <ArduinoJson.h>
 
 /****************************************************
  * see: https://www.apihz.cn/api/tqtqyb.html
  ***************************************************/
 
-// ================= WiFi Setttings =================
-const char* WIFI_SSID = "OpenWRT_2G";
-const char* WIFI_PASSWORD = "183492765";
-const char* HOSTNAME = "esp32s3-n16r8";
+// ================= WiFi Settings =================
+const String WIFI_SSID = "OpenWRT_2G";
+const String WIFI_PASSWORD = "183492765";
+const String HOSTNAME = "esp32s3-n16r8";
 // ==================================================
 
 
-// ================= https settings =================
+// ================= HTTPS Settings =================
 const int HTTPS_PORT = 443;
 // ==================================================
 
 
 // =================== 配置你的信息 ===================
-const char* HOST_API = "https://cn.apihz.cn/";
-const char* GET_API = "https://api.apihz.cn/getapi.php";
-const char* API_ID = "10011341";
-const char* API_KEY = "967127bed467835653426373aab82828"; // 从apihz.cn注册获取
-const char* CITY = "成都"; // 你想要查询的城市（如beijing, shanghai等）
+const String HOST_API = "https://cn.apihz.cn/";
+const String GET_API = "https://api.apihz.cn/getapi.php";
+const String API_ID = "10011341";
+const String API_KEY = "967127bed467835653426373aab82828"; // 从apihz.cn注册获取
+const String CITY = "成都"; // 你想要查询的城市（如beijing, shanghai等）
 // ==================================================
 
+
 // CA证书（apihz.cn的证书，用于安全验证）
-const char CA_CERT_APIHZ[] = R"string_literal(
+const String CA_CERT_APIHZ = R"string_literal(
 -----BEGIN CERTIFICATE-----
 MIIGJzCCBQ+gAwIBAgIQfgSnzHPKkAFV5wMJd2vaZDANBgkqhkiG9w0BAQsFADCB
 jzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G
@@ -66,26 +67,31 @@ Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
 -----END CERTIFICATE-----
 )string_literal";
 
-void connect_WIFI(const char* ssid, const char* password, const char* hostname) {
-  Serial.printf("\nstart to connect to %s\n", ssid);
-  WiFi.setHostname(hostname);
-  WiFi.begin(ssid, password);
+void connect_WIFI(const String hostname, const String ssid, const String password) {
+  Serial.printf("\nstart to connect to %s", ssid.c_str());
+  WiFi.setHostname(hostname.c_str());
+  WiFi.begin(WIFI_SSID.c_str(), password.c_str());
 
-  while(WiFi.status() != WL_CONNECTED) {}
+  while(WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected");
+  Serial.print("ip address: ");
   Serial.println(WiFi.localIP());
 }
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
-  connect_WIFI(WIFI_SSID, WIFI_PASSWORD, HOSTNAME);
+  connect_WIFI(HOSTNAME, WIFI_SSID, WIFI_PASSWORD);
   // update local time
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
 }
 
-char* connectHTTP(char* url) {
-  char* result = NULL;
-  if (!url) {
+String connectHTTP(String url) {
+  String result;
+  if (url.isEmpty()) {
     return result;
   }
 
@@ -93,23 +99,20 @@ char* connectHTTP(char* url) {
   Serial.print("[HTTP] begin...\n");
   // configure traged server and url
   //http.begin("https://www.howsmyssl.com/a/check", ca); //HTTPS
-  http.begin(String(url));  //HTTP
+  http.begin(url);
 
   Serial.print("[HTTP] GET...\n");
   // start connection and send HTTP header
   int httpCode = http.GET();
 
-  // httpCode will be negative on error
+// httpCode will be negative on error
   if (httpCode > 0) {
     // HTTP header has been send and Server response header has been handled
     Serial.printf("[HTTP] GET... code: %d\n", httpCode);
 
-    // file found at server
     if (httpCode == HTTP_CODE_OK) {
-      const char* payload = http.getString().c_str();
-      Serial.println(payload);
-      result = (char *)malloc((strlen(payload) + 1) * sizeof(payload));
-      strcpy(result, payload);
+      result = http.getString();
+      Serial.println(result.c_str());
     }
   } else {
     Serial.printf("[HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
@@ -119,165 +122,140 @@ char* connectHTTP(char* url) {
   return result;
 }
 
-char* connectHTTPS(char* url, const char* ca_cert) {
-  char* result = NULL;
+String connectHTTPS(String url, String ca_cert) {
+  String result;
   int httpCode;
 
-  if (!url) {
+  if (url.isEmpty()) {
     return result;
   }
   HTTPClient https;
-  // 1. 构建API请求
   NetworkClientSecure *client = new NetworkClientSecure;
   if (!client) {
     return result;
   }
-  // 2. set CA证书
-  if (!ca_cert) {
-    client->setInsecure(); // 临时测试用（不推荐生产环境）
+
+  if (ca_cert.isEmpty()) {
+    client->setInsecure();
   } else {
-    client->setCACert(ca_cert); // 生产环境必须
+    client->setCACert(ca_cert.c_str());
   }
-  // 3. 发送GET请求
-  if (https.begin(*client, String(url))) {
+
+  if (https.begin(*client, url)) {
     Serial.println("[HTTPS] GET...");
-    // start connection and send HTTP header
     httpCode = https.GET();
 
-    // httpCode will be negative on error
     if (httpCode > 0) {
-      // HTTP header has been send and Server response header has been handled
       Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
-      // file found at server
+
       if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-        const char* payload = https.getString().c_str();
-        Serial.println(payload);
-        result = (char *)malloc((strlen(payload) + 1) * sizeof(payload));
-        strcpy(result, payload);
-      } else { // httpCode != 200
+        result = https.getString();
+        Serial.println(result.c_str());
+      } else {
         Serial.printf("[HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
       }
-    } else { // httpCode < 0
+    } else {
       Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
     }
-  } else { // https.begin return error
+  } else {
     Serial.println("[HTTPS]请求失败");
   }
+
   https.end();
-  delete client; // 释放内存
+  delete client;
   return result;
 }
 
-char* connectHTTPandHTTPS(char* url, const char* ca_cert) {
-  if (!url) {
-    return NULL;
+String connectHTTPandHTTPS(String url, String ca_cert) {
+  if (url.isEmpty()) {
+    return "";
   }
-  if (String(url).startsWith("https://")) {
-    Serial.printf("connect to https: %s\n", url);
+
+  if (url.startsWith("https://")) {
+    Serial.printf("connect to https: %s\n", url.c_str());
     return connectHTTPS(url, ca_cert);
   } else {
-    Serial.printf("connect to http: %s\n", url);
+    Serial.printf("connect to http: %s\n", url.c_str());
     return connectHTTP(url);
   }
 }
 
-char* getWeatherHost(const char* get_api_url, const char* ca_cert) {
-  char* host = NULL;
-
-  // 1. 构建API请求
-  if (!get_api_url) {
+String getWeatherHost(String get_api_url, String ca_cert) {
+  String host;
+  if (get_api_url.isEmpty()) {
     get_api_url = GET_API;
   }
-  char* url = (char *)malloc((strlen(get_api_url) + 1) * sizeof(get_api_url));
-  strcpy(url, get_api_url);
-  char* connect_result = connectHTTPandHTTPS(url, ca_cert);
-  free(url);
-  url = NULL;
-  if (!connect_result) {
+  String connect_result = connectHTTPandHTTPS(get_api_url, ca_cert);
+
+  if (connect_result.isEmpty()) {
     return host;
   }
-  String payload = String(connect_result);
-  free(connect_result);
-  connect_result = NULL;
-  // 解析JSON
-  DynamicJsonDocument doc(16); // 16B内存（足够解析JSON）
-  DeserializationError error = deserializeJson(doc, payload);
+
+  DynamicJsonDocument doc(16);
+  DeserializationError error = deserializeJson(doc, connect_result);
+
   if (error) {
     Serial.print("ERROR: JSON解析失败: ");
     Serial.println(error.c_str());
-    Serial.printf("connect return is: %s\n", payload);
+    Serial.printf("connect return is: %s\n", connect_result.c_str());
     Serial.println("请检查API返回格式或增大内存");
     return host;
   }
-  // 提取天气数据
-  if (doc["code"] == 200) {
-    // 提取精确api
-    if (doc["api"]) {
-      String api = doc["api"];
-      host = (char *)malloc((strlen(doc["api"]) + 1) * sizeof(doc["api"]));
-      strcpy(host, api.c_str());
-    }
-  } else { // doc["code"] != 200
+
+  if (doc["code"] == 200 && !doc["api"].isNull()) {
+    host = doc["api"].as<String>();
+  } else {
     Serial.printf("[HTTPS]请求失败: return code: %d\n", doc["code"]);
   }
+
   return host;
 }
 
-void getWeatherFromHost(const char* host, const char* ca_cert) {
-  // 1. 构建API请求
-  if (!host) {
+void getWeatherFromHost(String host, String ca_cert) {
+  if (host.isEmpty()) {
     host = HOST_API;
   }
-  String url_string = String(host) + String("api/tianqi/tqyb.php?") + String("id=") + String(API_ID) + String("&key=") + String(API_KEY) + String("&sheng=四川&place=成都&day=1&hourtype=1");
-  host = NULL;
-  char* url = (char *)malloc((strlen(url_string.c_str()) + 1) * sizeof(url_string.c_str()));
-  strcpy(url, url_string.c_str());
-  // 3. 发送GET请求
-  char* connect_result = connectHTTPandHTTPS(url, ca_cert);
-  free(url);
-  url = NULL;
-  if (!connect_result) {
+
+  String url_string = host + "api/tianqi/tqyb.php?id=" + API_ID + "&key=" + API_KEY + "&sheng=四川&place=" + CITY + "&day=1&hourtype=1";
+  
+  String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
+
+  if (connect_result.isEmpty()) {
     return;
   }
-  String payload = String(connect_result);
-  // 解析JSON
-  DynamicJsonDocument doc(1024); // 1KB内存（足够解析大JSON）
-  DeserializationError error = deserializeJson(doc, payload);
+
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, connect_result);
 
   if (error) {
     Serial.print("JSON解析失败: ");
     Serial.println(error.c_str());
-    Serial.printf("return is: %s\n", payload);
+    Serial.printf("return is: %s\n", connect_result.c_str());
     Serial.println("请检查API返回格式或增大内存");
     return;
   }
-  // 提取天气数据
-  if (doc["code"] == 200) {
-    // 提取精确温度
-    if (doc["nowinfo"] && doc["nowinfo"]["temperature"]) {
-      String temperature = doc["nowinfo"]["temperature"];
-      Serial.printf("temperature is %s\n", temperature);
-    }
+
+  if (doc["code"] == 200 && doc["nowinfo"] && !doc["nowinfo"]["temperature"].isNull()) {
+    String temperature = doc["nowinfo"]["temperature"].as<String>();
+    Serial.printf("temperature is %s\n", temperature.c_str());
   } else {
     Serial.printf("[HTTPS]请求失败: return code: %d\n", doc["code"]);
   }
 }
 
 void getWeather() {
-  char* host = getWeatherHost(GET_API, NULL);
-  if (!host) {
+  String host = getWeatherHost(GET_API, "");
+
+  if (host.isEmpty()) {
     Serial.println("ERROR: getWeatherHost return host is NULL");
-    host = (char *)malloc((strlen(HOST_API) + 1) * sizeof(HOST_API));
-    strcpy(host, HOST_API);
+    host = HOST_API;
   }
-  getWeatherFromHost(host, NULL);
-  free(host);
-  host = NULL;
+
+  getWeatherFromHost(host, "");
 }
 
 void loop() {
   getWeather();
   delay(600000); // 10分钟
-  // 每10分钟获取一次天气
   Serial.println("\n=== 下次天气更新: 10分钟后 ===");
 }
