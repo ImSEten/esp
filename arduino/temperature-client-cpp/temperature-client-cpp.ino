@@ -180,7 +180,7 @@ String connectHTTPandHTTPS(String url, String ca_cert) {
   }
 }
 
-String getWeatherHost(String get_api_url, String ca_cert) {
+String getApihzHost(String get_api_url, String ca_cert) {
   String host;
   if (get_api_url.isEmpty()) {
     get_api_url = GET_API;
@@ -191,7 +191,7 @@ String getWeatherHost(String get_api_url, String ca_cert) {
     return host;
   }
 
-  DynamicJsonDocument doc(16);
+  DynamicJsonDocument doc(16); // 16B
   DeserializationError error = deserializeJson(doc, connect_result);
 
   if (error) {
@@ -211,12 +211,12 @@ String getWeatherHost(String get_api_url, String ca_cert) {
   return host;
 }
 
-void getWeatherFromHost(String host, String ca_cert) {
+void getWeatherFromHost(String host, String ca_cert, String city) {
   if (host.isEmpty()) {
     host = HOST_API;
   }
 
-  String url_string = host + "api/tianqi/tqyb.php?id=" + API_ID + "&key=" + API_KEY + "&sheng=四川&place=" + CITY + "&day=1&hourtype=1";
+  String url_string = host + "api/tianqi/tqyb.php" + "?id=" + API_ID + "&key=" + API_KEY + "&sheng=四川&place=" + city + "&day=1&hourtype=1";
   
   String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
 
@@ -224,7 +224,7 @@ void getWeatherFromHost(String host, String ca_cert) {
     return;
   }
 
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(1024); // 1KB
   DeserializationError error = deserializeJson(doc, connect_result);
 
   if (error) {
@@ -243,19 +243,66 @@ void getWeatherFromHost(String host, String ca_cert) {
   }
 }
 
-void getWeather() {
-  String host = getWeatherHost(GET_API, "");
+void getWeather(String city) {
+  String host = getApihzHost(GET_API, "");
 
   if (host.isEmpty()) {
     Serial.println("ERROR: getWeatherHost return host is NULL");
     host = HOST_API;
   }
 
-  getWeatherFromHost(host, "");
+  getWeatherFromHost(host, "", city);
+}
+
+String getAIAnswerFromHost(String host, String ca_cert, String words) {
+  if (host.isEmpty()) {
+    host = HOST_API;
+  }
+
+  String url_string = host + "api/ai/wxtiny.php" + "?id=" + API_ID + "&key=" + API_KEY + "&words=" + words;
+  
+  String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
+
+  if (connect_result.isEmpty()) {
+    return "";
+  }
+  DynamicJsonDocument doc(40960); // 40KB
+  DeserializationError error = deserializeJson(doc, connect_result);
+
+  if (error) {
+    Serial.print("JSON解析失败: ");
+    Serial.println(error.c_str());
+    Serial.printf("return is: %s\n", connect_result.c_str());
+    Serial.println("请检查API返回格式或增大内存");
+    return "";
+  }
+
+  if (doc["code"] == 200 && !doc["msg"].isNull()) {
+    String answer = doc["msg"].as<String>();
+    Serial.printf("answer is %s\n", answer.c_str());
+    return answer;
+  } else {
+    Serial.printf("[HTTPS]请求失败: return code: %d\n", doc["code"]);
+    return "";
+  }
+}
+
+String getAIAnswer(String words) {
+  String host = getApihzHost(GET_API, "");
+
+  if (host.isEmpty()) {
+    Serial.println("ERROR: getWeatherHost return host is NULL");
+    host = HOST_API;
+  }
+
+  String answer = getAIAnswerFromHost(host, "", words);
+  return answer;
 }
 
 void loop() {
-  getWeather();
+  getWeather(CITY);
+  //String answer = getAIAnswer("请讲解一下rust语言中map与map_err的区别");
+  //Serial.printf("answer is %s\n", answer.c_str());
   delay(600000); // 10分钟
   Serial.println("\n=== 下次天气更新: 10分钟后 ===");
 }
