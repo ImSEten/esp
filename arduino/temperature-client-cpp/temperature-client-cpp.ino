@@ -126,42 +126,47 @@ String connectHTTPS(String url, String ca_cert) {
   String result;
   int httpCode;
 
+  // check url
   if (url.isEmpty()) {
     return result;
   }
-  HTTPClient https;
+  // create network client
   NetworkClientSecure *client = new NetworkClientSecure;
-  if (!client) {
+  if (client == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 创建network client失败");
     return result;
   }
-
+  // set ca_cert
   if (ca_cert.isEmpty()) {
     client->setInsecure();
   } else {
     client->setCACert(ca_cert.c_str());
   }
 
-  if (https.begin(*client, url)) {
-    Serial.println("[HTTPS] GET...");
-    httpCode = https.GET();
+  {
+    // Add a scoping block for HTTPClient https to make sure it is destroyed before delete client
+    HTTPClient https;
+    if (https.begin(*client, url)) {
+      Serial.println("DEBUG: [HTTPS] GET...");
+      httpCode = https.GET();
 
-    if (httpCode > 0) {
-      Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+      if (httpCode > 0) {
+        Serial.printf("DEBUG: [HTTPS] GET... code: %d\n", httpCode);
 
-      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-        result = https.getString();
-        Serial.println(result.c_str());
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          result = https.getString();
+        } else {
+          Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
+        }
       } else {
-        Serial.printf("[HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
+        Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
       }
+      https.end();
     } else {
-      Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败");
     }
-  } else {
-    Serial.println("[HTTPS]请求失败");
   }
 
-  https.end();
   delete client;
   return result;
 }

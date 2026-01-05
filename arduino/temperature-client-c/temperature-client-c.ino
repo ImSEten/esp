@@ -126,7 +126,6 @@ char* connectHTTPS(char* url, const char* ca_cert) {
   if (!url) {
     return result;
   }
-  HTTPClient https;
   // 1. 构建API请求
   NetworkClientSecure *client = new NetworkClientSecure;
   if (!client) {
@@ -138,32 +137,37 @@ char* connectHTTPS(char* url, const char* ca_cert) {
   } else {
     client->setCACert(ca_cert); // 生产环境必须
   }
-  // 3. 发送GET请求
-  if (https.begin(*client, String(url))) {
-    Serial.println("[HTTPS] GET...");
-    // start connection and send HTTP header
-    httpCode = https.GET();
+  {
+    // Add a scoping block for HTTPClient https to make sure it is destroyed before delete client
+    HTTPClient https;
+    // 3. 发送GET请求
+    if (https.begin(*client, String(url))) {
+      Serial.println("[HTTPS] GET...");
+      // start connection and send HTTP header
+      httpCode = https.GET();
 
-    // httpCode will be negative on error
-    if (httpCode > 0) {
-      // HTTP header has been send and Server response header has been handled
-      Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
-      // file found at server
-      if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-        const char* payload = https.getString().c_str();
-        Serial.println(payload);
-        result = (char *)malloc((strlen(payload) + 1) * sizeof(payload));
-        strcpy(result, payload);
-      } else { // httpCode != 200
-        Serial.printf("[HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
+      // httpCode will be negative on error
+      if (httpCode > 0) {
+        // HTTP header has been send and Server response header has been handled
+        Serial.printf("[HTTPS] GET... code: %d\n", httpCode);
+        // file found at server
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          const char* payload = https.getString().c_str();
+          Serial.println(payload);
+          result = (char *)malloc((strlen(payload) + 1) * sizeof(payload));
+          strcpy(result, payload);
+        } else { // httpCode != 200
+          Serial.printf("[HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
+        }
+      } else { // httpCode < 0
+        Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
       }
-    } else { // httpCode < 0
-      Serial.printf("[HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+      https.end();
+    } else { // https.begin return error
+      Serial.println("[HTTPS]请求失败");
     }
-  } else { // https.begin return error
-    Serial.println("[HTTPS]请求失败");
   }
-  https.end();
+
   delete client; // 释放内存
   return result;
 }
