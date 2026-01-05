@@ -23,8 +23,8 @@ const int HTTPS_PORT = 443;
 const String HOST_API = "https://cn.apihz.cn/";
 const String GET_API = "https://api.apihz.cn/getapi.php";
 const String API_ID = "10011341";
-const String API_KEY = "967127bed467835653426373aab82828"; // 从apihz.cn注册获取
-const String CITY = "成都"; // 你想要查询的城市（如beijing, shanghai等）
+const String API_KEY = "967127bed467835653426373aab82828";  // 从apihz.cn注册获取
+const String CITY = "成都";                                 // 你想要查询的城市（如beijing, shanghai等）
 // ==================================================
 
 
@@ -72,7 +72,7 @@ void connect_WIFI(const String hostname, const String ssid, const String passwor
   WiFi.setHostname(hostname.c_str());
   WiFi.begin(WIFI_SSID.c_str(), password.c_str());
 
-  while(WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.print(".");
   }
@@ -105,7 +105,7 @@ String connectHTTP(String url) {
   // start connection and send HTTP header
   int httpCode = http.GET();
 
-// httpCode will be negative on error
+  // httpCode will be negative on error
   if (httpCode > 0) {
     // HTTP header has been send and Server response header has been handled
     Serial.printf("[HTTP] GET... code: %d\n", httpCode);
@@ -191,7 +191,7 @@ String getApihzHost(String get_api_url, String ca_cert) {
     return host;
   }
 
-  DynamicJsonDocument doc(16); // 16B
+  DynamicJsonDocument doc(16);  // 16B
   DeserializationError error = deserializeJson(doc, connect_result);
 
   if (error) {
@@ -217,14 +217,14 @@ void getWeatherFromHost(String host, String ca_cert, String city) {
   }
 
   String url_string = host + "api/tianqi/tqyb.php" + "?id=" + API_ID + "&key=" + API_KEY + "&sheng=四川&place=" + city + "&day=1&hourtype=1";
-  
+
   String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
 
   if (connect_result.isEmpty()) {
     return;
   }
 
-  DynamicJsonDocument doc(1024); // 1KB
+  DynamicJsonDocument doc(1024);  // 1KB
   DeserializationError error = deserializeJson(doc, connect_result);
 
   if (error) {
@@ -260,13 +260,13 @@ String getAIAnswerFromHost(String host, String ca_cert, String words) {
   }
 
   String url_string = host + "api/ai/wxtiny.php" + "?id=" + API_ID + "&key=" + API_KEY + "&words=" + words;
-  
+
   String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
 
   if (connect_result.isEmpty()) {
     return "";
   }
-  DynamicJsonDocument doc(40960); // 40KB
+  DynamicJsonDocument doc(40960);  // 40KB
   DeserializationError error = deserializeJson(doc, connect_result);
 
   if (error) {
@@ -303,6 +303,6 @@ void loop() {
   getWeather(CITY);
   //String answer = getAIAnswer("请讲解一下rust语言中map与map_err的区别");
   //Serial.printf("answer is %s\n", answer.c_str());
-  delay(600000); // 10分钟
+  delay(600000);  // 10分钟
   Serial.println("\n=== 下次天气更新: 10分钟后 ===");
 }
