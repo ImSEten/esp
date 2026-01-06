@@ -1,0 +1,535 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <NetworkClientSecure.h>
+#include <ArduinoJson.h>
+
+/****************************************************
+ * see: https://www.apihz.cn/api/tqtqyb.html
+ ***************************************************/
+
+// ================ Serial Settings =================
+const uint MAX_SERIAL_INPUT = 1024;
+const uint SERIAL_PORT = 115200;
+// ==================================================
+
+// ================= WiFi Settings ==================
+const String WIFI_SSID = "OpenWRT_2G";
+const String WIFI_PASSWORD = "183492765";
+const String HOSTNAME = "esp32s3-n16r8";
+// ==================================================
+
+
+// ================= HTTPS Settings =================
+const int HTTPS_PORT = 443;
+// ==================================================
+
+
+// =================== 配置你的信息 ===================
+const String HOST_API = "https://cn.apihz.cn/";
+const String GET_API = "https://api.apihz.cn/getapi.php";
+const String API_ID = "10011341";
+const String API_KEY = "967127bed467835653426373aab82828";  // 从apihz.cn注册获取
+const String CITY = "成都";                                 // 你想要查询的城市（如beijing, shanghai等）
+const uint WEATHER_DELAY_TIME = 600000;                     // 延迟时间
+const uint MUTEX_WAIT = 100;                                // mutex等待时间，100ms
+const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;                 // AI提问最大字符长度
+// ==================================================
+
+
+// CA证书（apihz.cn的证书，用于安全验证）
+const String CA_CERT_APIHZ = R"string_literal(
+-----BEGIN CERTIFICATE-----
+MIIGJzCCBQ+gAwIBAgIQfgSnzHPKkAFV5wMJd2vaZDANBgkqhkiG9w0BAQsFADCB
+jzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G
+A1UEBxMHU2FsZm9yZDEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQD
+Ey5TZWN0aWdvIFJTQSBEb21haW4gVmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENB
+MB4XDTI1MDQyMjAwMDAwMFoXDTI2MDUyMzIzNTk1OVowFTETMBEGA1UEAwwKKi5h
+cGloei5jbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALe9mF0mS8cM
+OKM1U/n1cA9X18pKfxLC73liyMJbAqzqU/dLmJprUiQv9pUzitZ/5fDexlzYkAyn
+Pfu9mU6PD3q7mT06cLJ448u9CnfZeg0F9TNe6tjb+R4KrazIN/vXCPCYn8b8d/b4
+9O06LrlxTMRSy1lxxYvf6wCMpGEgZD5/BpFOGX/zNCuAjsPCmINU4Vrz7lWG/kqM
+8fgYrZWQyoW3sSMOQuTIDOaEGQizH5E9duMCj5bXgR9ZBaVJtd/yGuzo7GKHABoa
+aqxdYfZF4zGzHArwyOhzIqcE1k8DVBX1nA9jM6Rx7v63xetqRya84/C143zSrfaz
+LGLB91prHCcCAwEAAaOCAvYwggLyMB8GA1UdIwQYMBaAFI2MXsRUrYrhd+mb+ZsF
+4bgBjWHhMB0GA1UdDgQWBBTcVCVo/XoZXBlczuA2TztsqYlC1zAOBgNVHQ8BAf8E
+BAMCBaAwDAYDVR0TAQH/BAIwADAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUH
+AwIwSQYDVR0gBEIwQDA0BgsrBgEEAbIxAQICBzAlMCMGCCsGAQUFBwIBFhdodHRw
+czovL3NlY3RpZ28uY29tL0NQUzAIBgZngQwBAgEwgYQGCCsGAQUFBwEBBHgwdjBP
+BggrBgEFBQcwAoZDaHR0cDovL2NydC5zZWN0aWdvLmNvbS9TZWN0aWdvUlNBRG9t
+YWluVmFsaWRhdGlvblNlY3VyZVNlcnZlckNBLmNydDAjBggrBgEFBQcwAYYXaHR0
+cDovL29jc3Auc2VjdGlnby5jb20wHwYDVR0RBBgwFoIKKi5hcGloei5jboIIYXBp
+aHouY24wggF+BgorBgEEAdZ5AgQCBIIBbgSCAWoBaAB1AJaXZL9VWJet90OHaDcI
+Qnfp8DrV9qTzNm5GpD8PyqnGAAABllv1WxQAAAQDAEYwRAIgfZ0jEf90awhMDRw9
+X7emVlcE0/FPX/jk0d38xH1onW8CIAt8tpNJ+ovg0Y9mrbRmp6r3S8E/3rM5bZQf
+IkobWL86AHYAGYbUxyiqb/66A294Kk0BkarOLXIxD67OXXBBLSVMx9QAAAGWW/Va
+8wAABAMARzBFAiB638KE/nmuqV9D86EqNApWmKOYN2NlgVAuMXmOseblLgIhAIAr
+cK1sMqPGt/qCpeDJcY/VEiOFSnFpLy56q6N4uWxrAHcADleUvPOuqT4zGyyZB7P3
+kN+bwj1xMiXdIaklrGHFTiEAAAGWW/Va9AAABAMASDBGAiEArGXY6k9QZVRgYgNg
+SMuW+maRzil7rM0R/TeZDT4viJECIQCNcZS2obce6zbc664BX7EwD5MPCa6RdWbR
+2LhFx7F/EzANBgkqhkiG9w0BAQsFAAOCAQEAM6kj1dPPJE4j6N/xyr7u4uOIupoY
+5XRy12q3pCUJroEXrREf+5yFLTFMrDkz0tKOs5Xhmk7QRG3uEWGZ62rcsxUfpqyd
+71k0+lwxVc+XS5YZ7zQU7KEPS5r6fnQ599TV5yKuqxikxkSM6xHc4pTR826KPDBA
+3/iCJkrV7kCpOY8Hn7avxj2OBNCydPbncQ6nTUxgu2c24cQFX+U0oNEPpJ+ilJdG
+Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
+2Ex76LF5iYjchN3CYLRterhjIFzxVC1gtrHoq6kNo+c8TlbKY6FBGmW6cA==
+-----END CERTIFICATE-----
+)string_literal";
+
+// 定义WIFI配置
+typedef struct {
+  String hostname;
+  String ssid;
+  String password;
+  bool auto_reconnect;
+  SemaphoreHandle_t mutex;  // 锁
+} WIFIConfig;
+
+typedef struct {
+  String city;
+  uint delay_time;
+  SemaphoreHandle_t mutex;  // 锁
+} WeatherConfig;
+
+typedef struct {
+  QueueHandle_t serial_queue;  // 从serial中输入
+  QueueHandle_t words_queue;   // 输出给AI
+} AIConfig;
+
+// 队列句柄
+QueueHandle_t Serial_Queue = NULL;
+QueueHandle_t Ai_Words_Queue = NULL;
+
+// init configs
+WIFIConfig Wifi_Config;
+WeatherConfig Weather_Config;
+AIConfig Ai_Config;
+
+void connect_WIFI(WIFIConfig *wifi_config) {
+  if (wifi_config == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: WIFI配置为空，程序退出!");
+    return;
+  }
+  Serial.printf("\nDEBUG: start to connect to %s", wifi_config->ssid.c_str());
+  WiFi.setHostname(wifi_config->hostname.c_str());
+  WiFi.begin(wifi_config->ssid.c_str(), wifi_config->password.c_str());
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\nDEBUG: WiFi connected");
+  Serial.print("DEBUG: ip address: ");
+  Serial.println(WiFi.localIP());
+}
+
+String connectHTTP(String url) {
+  String result;
+  if (url.isEmpty()) {
+    return result;
+  }
+
+  HTTPClient http;
+  Serial.print("DEBUG: [HTTP] begin...\n");
+  // configure traged server and url
+  //http.begin("https://www.howsmyssl.com/a/check", ca); //HTTPS
+  http.begin(url);
+
+  Serial.print("DEBUG: [HTTP] GET...\n");
+  // start connection and send HTTP header
+  int httpCode = http.GET();
+
+  // httpCode will be negative on error
+  if (httpCode > 0) {
+    // HTTP header has been send and Server response header has been handled
+    Serial.printf("DEBUG: [HTTP] GET... code: %d\n", httpCode);
+
+    if (httpCode == HTTP_CODE_OK) {
+      result = http.getString();
+    }
+  } else {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
+  }
+
+  http.end();
+  return result;
+}
+
+String connectHTTPS(String url, String ca_cert) {
+  String result;
+  int httpCode;
+
+  // check url
+  if (url.isEmpty()) {
+    return result;
+  }
+  // create network client
+  NetworkClientSecure *client = new NetworkClientSecure;
+  if (client == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 创建network client失败");
+    return result;
+  }
+  // set ca_cert
+  if (ca_cert.isEmpty()) {
+    client->setInsecure();
+  } else {
+    client->setCACert(ca_cert.c_str());
+  }
+
+  {
+    // Add a scoping block for HTTPClient https to make sure it is destroyed before delete client
+    HTTPClient https;
+    if (https.begin(*client, url)) {
+      Serial.println("DEBUG: [HTTPS] GET...");
+      httpCode = https.GET();
+
+      if (httpCode > 0) {
+        Serial.printf("DEBUG: [HTTPS] GET... code: %d\n", httpCode);
+
+        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
+          result = https.getString();
+        } else {
+          Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
+        }
+      } else {
+        Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
+      }
+      https.end();
+    } else {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败");
+    }
+  }
+
+  delete client;
+  return result;
+}
+
+String connectHTTPandHTTPS(String url, String ca_cert) {
+  if (url.isEmpty()) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect url is nil");
+    return "";
+  }
+
+  if (url.startsWith("https://")) {
+    Serial.printf("DEBUG: connect to https: %s\n", url.c_str());
+    return connectHTTPS(url, ca_cert);
+  } else {
+    Serial.printf("DEBUG: connect to http: %s\n", url.c_str());
+    return connectHTTP(url);
+  }
+}
+
+String getApihzHost(String get_api_url, String ca_cert) {
+  String host;
+  if (get_api_url.isEmpty()) {
+    get_api_url = GET_API;
+  }
+  String connect_result = connectHTTPandHTTPS(get_api_url, ca_cert);
+  Serial.printf("DEBUG: getApihzHost connect_result is %s\n", connect_result.c_str());
+
+  if (connect_result.isEmpty()) {
+    Serial.println("⚠️ WARN: connect apihzHost return is NULL!");
+    return host;
+  }
+
+  DynamicJsonDocument doc(16);  // 16B
+  DeserializationError error = deserializeJson(doc, connect_result);
+
+  if (error) {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: JSON解析失败: %s\n", error.c_str());
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect return is: %s\n", connect_result.c_str());
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
+    return host;
+  }
+
+  if (doc["code"] == 200 && !doc["api"].isNull()) {
+    host = doc["api"].as<String>();
+  } else {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: code: %d", doc["code"]);
+    if (!doc["msg"].isNull()) {
+      Serial.printf("; msg: %s\n", doc["msg"]);
+    } else {
+      Serial.printf("; msg: NULL\n");
+    }
+  }
+
+  return host;
+}
+
+void getWeatherFromHost(String host, String ca_cert, String city) {
+  if (host.isEmpty()) {
+    host = HOST_API;
+  }
+
+  String url_string = host + "api/tianqi/tqyb.php" + "?id=" + API_ID + "&key=" + API_KEY + "&sheng=四川&place=" + city + "&day=1&hourtype=1";
+
+  String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
+  Serial.printf("DEBUG: getWeather connect_result is %s\n", connect_result.c_str());
+
+  if (connect_result.isEmpty()) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect return is NULL!");
+    return;
+  }
+
+  DynamicJsonDocument doc(1024);  // 1KB
+  DeserializationError error = deserializeJson(doc, connect_result);
+
+  if (error) {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: JSON解析失败: %s\n", error.c_str());
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect return is: %s\n", connect_result.c_str());
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
+    return;
+  }
+
+  if (doc["code"] == 200 && doc["nowinfo"] && !doc["nowinfo"]["temperature"].isNull()) {
+    String temperature = doc["nowinfo"]["temperature"].as<String>();
+    Serial.printf("⚡ INFO: temperature is %s\n", temperature.c_str());
+  } else {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: return code: %d\n", doc["code"]);
+  }
+}
+
+void getWeather(String city) {
+  String host = getApihzHost(GET_API, "");
+
+  if (host.isEmpty()) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: getWeatherHost return host is NULL");
+    host = HOST_API;
+  }
+
+  getWeatherFromHost(host, "", city);
+}
+
+String getAIAnswerFromHost(String host, String ca_cert, String words) {
+  if (host.isEmpty()) {
+    host = HOST_API;
+  }
+
+  String url_string = host + "api/ai/wxtiny.php" + "?id=" + API_ID + "&key=" + API_KEY + "&words=" + words;
+
+  String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
+
+  if (connect_result.isEmpty()) {
+    return "";
+  }
+  DynamicJsonDocument doc(40960);  // 40KB
+  DeserializationError error = deserializeJson(doc, connect_result);
+
+  if (error) {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: JSON解析失败: %s\n", error.c_str());
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: return is: %s\n", connect_result.c_str());
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
+    return "";
+  }
+
+  if (doc["code"] == 200 && !doc["msg"].isNull()) {
+    String answer = doc["msg"].as<String>();
+    Serial.printf("INFO: answer is %s\n", answer.c_str());
+    return answer;
+  } else {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: return code: %d\n", doc["code"]);
+    return "";
+  }
+}
+
+String getAIAnswer(String words) {
+  if (words.isEmpty()) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向AI提问的内容为空");
+    return "";
+  }
+  String host = getApihzHost(GET_API, "");
+
+  if (host.isEmpty()) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: getWeatherHost return host is NULL");
+    host = HOST_API;
+  }
+
+  String answer = getAIAnswerFromHost(host, "", words);
+  return answer;
+}
+
+void Connect_WIFI(void *pvParameters) {
+  if (pvParameters == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: Connect_WIFI入参为NULL");
+    return;
+  }
+  WIFIConfig *wifi_config = (WIFIConfig *)pvParameters;                                   // 类型转换
+  if (wifi_config->mutex != NULL && xSemaphoreTake(wifi_config->mutex, portMAX_DELAY)) {  // portMAX_DELAY表示永久阻塞等锁，占用cpu资源。
+    WiFi.setAutoReconnect(wifi_config->auto_reconnect);
+    xSemaphoreGive(wifi_config->mutex);  // 释放锁
+  }
+
+  connect_WIFI(wifi_config);
+}
+
+void GetWeather(void *pvParameters) {
+  if (pvParameters == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetWeather入参为NULL");
+    return;
+  }
+  WeatherConfig *weather_config = (WeatherConfig *)pvParameters;  // 类型转换
+  uint delay_time;
+  while (true) {
+    if (weather_config == NULL) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetWeather的weather_config为NULL");
+      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      continue;
+    }
+    if (weather_config->mutex != NULL && xSemaphoreTake(weather_config->mutex, MUTEX_WAIT)) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
+      delay_time = weather_config->delay_time;
+      getWeather(weather_config->city);
+      xSemaphoreGive(weather_config->mutex);  // 释放锁
+      vTaskDelay(pdMS_TO_TICKS(delay_time));
+    } else {
+      Serial.printf("⚠️ WARN: 获取天气锁超时！下次获取天气信息将在%ds后\n", delay_time / 10 / 1000);
+      vTaskDelay(pdMS_TO_TICKS(delay_time / 10));
+    }
+  }
+  vTaskDelete(NULL);
+}
+
+void GetAIAnswer(void *pvParameters) {
+  if (pvParameters == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
+    return;
+  }
+  AIConfig *ai_config = (AIConfig *)pvParameters;  // 类型转换
+  char words_char[MAX_AI_WORDS];
+  while (true) {
+    if (ai_config == NULL) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer的ai_config为NULL");
+      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      continue;
+    }
+    if (ai_config->words_queue != NULL && xQueueReceive(ai_config->words_queue, words_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
+      String words = String(words_char);
+      getAIAnswer(words);
+    } else {  // 未获取到锁
+      Serial.println("⚠️ WARN: 无法从队列中获取值！重新等待队列输入");
+    }
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+  }
+  vTaskDelete(NULL);
+}
+
+void ReadFromSerial(void *pvParameters) {
+  if (pvParameters == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: ReadFromSerial入参为NULL");
+    return;
+  }
+  char buffer[MAX_SERIAL_INPUT];
+  QueueHandle_t *serial_queue = (QueueHandle_t *)pvParameters;
+  while (true) {
+    if (serial_queue == NULL) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: ReadFromSerial的serial_queue为NULL");
+      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      continue;
+    }
+    if (Serial.available() > 0) {
+      String message = Serial.readStringUntil('\n');
+      message.toCharArray(buffer, MAX_SERIAL_INPUT);
+      // 发送字符数组（安全副本）
+      if (xQueueSend(*serial_queue, buffer, portMAX_DELAY) != pdPASS) {
+        Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向serial_queue队列发送数据失败!");
+      } else {
+        Serial.printf("DEBUG: 向serial_queue发送数据: %s\n", buffer);
+      }
+    }
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+  }
+  vTaskDelete(NULL);
+}
+
+void GetAIQuestions(void *pvParameters) {
+  if (pvParameters == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
+    return;
+  }
+  AIConfig *ai_config = (AIConfig *)pvParameters;  // 类型转换
+  char serial_char[MAX_SERIAL_INPUT];
+  char words_char[MAX_AI_WORDS];
+  while (true) {
+    if (ai_config == NULL) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIQuestions的ai_config为NULL");
+      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      continue;
+    }
+    Serial.println("DEBUG: waiting for serail_queue input");
+    if (ai_config->serial_queue != NULL && xQueueReceive(ai_config->serial_queue, serial_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
+      String words = String(serial_char);
+      words.toCharArray(words_char, MAX_AI_WORDS);
+      if (ai_config->words_queue != NULL && xQueueSend(ai_config->words_queue, words_char, portMAX_DELAY) != pdPASS) {
+        Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向words_queue队列发送数据失败!");
+      } else {
+        Serial.printf("DEBUG: 向words_queue发送数据: %s\n", words_char);
+      }
+    } else {  // 未从serial_queue中获取到数据
+      Serial.println("⚠️ WARN: 无法从serial_queue队列中获取值！重新等待队列输入");
+    }
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+  }
+  vTaskDelete(NULL);
+}
+
+void setup() {
+  // start usb serial
+  Serial.begin(SERIAL_PORT);
+  // create mutex;
+  SemaphoreHandle_t wifi_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t weather_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t ai_mutex = xSemaphoreCreateMutex();
+  Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
+  Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
+  if (wifi_mutex == NULL || weather_mutex == NULL) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
+    return;
+  }
+
+  // connect wifi config
+  Wifi_Config = {
+    hostname: HOSTNAME,
+    ssid: WIFI_SSID,
+    password: WIFI_PASSWORD,
+    auto_reconnect: true,
+    mutex: wifi_mutex,
+  };
+
+  // get weather config
+  Weather_Config = {
+    city: CITY,
+    delay_time: WEATHER_DELAY_TIME,
+    mutex: weather_mutex,
+  };
+
+  Ai_Config = {
+    serial_queue: Serial_Queue,
+    words_queue: Ai_Words_Queue,
+  };
+
+  // 任务句柄（可选）
+  TaskHandle_t taskReadFromSerialHandle = NULL;
+  TaskHandle_t taskGetWeatherHandle = NULL;
+  TaskHandle_t taskGetAIQuestionsHandle = NULL;
+  TaskHandle_t taskGetAIAnswerHandle = NULL;
+
+  // Connect wifi
+  Connect_WIFI((void *)&Wifi_Config);
+  // update local time
+  configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  // read from serial
+  xTaskCreatePinnedToCore(
+    ReadFromSerial, "TaskReadFromSerial", 8192, (void *)&Serial_Queue, 5, &taskReadFromSerialHandle, 1);  // tskNO_AFFINITY表示不限制core
+  // get weather
+  xTaskCreatePinnedToCore(
+    GetWeather, "TaskGetWeather", 8192, (void *)&Weather_Config, 4, &taskGetWeatherHandle, 1);  // tskNO_AFFINITY表示不限制core
+  // get AIQuestions
+  xTaskCreatePinnedToCore(
+    GetAIQuestions, "TaskGetAIQuestions", 8192, (void *)&Ai_Config, 3, &taskGetAIQuestionsHandle, 1);  // tskNO_AFFINITY表示不限制core
+  // get AIAnswer
+  xTaskCreatePinnedToCore(
+    GetAIAnswer, "TaskGetAIAnswer", 8192, (void *)&Ai_Config, 3, &taskGetAIAnswerHandle, 1);  // tskNO_AFFINITY表示不限制core
+}
+
+void loop() {
+  // This loop is not executed by FreeRTOS
+  // Instead, tasks are scheduled by the FreeRTOS scheduler
+}
