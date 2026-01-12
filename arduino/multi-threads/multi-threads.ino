@@ -3,14 +3,44 @@
 #include <NetworkClientSecure.h>
 #include <ArduinoJson.h>
 
-/****************************************************
- * see: https://www.apihz.cn/api/tqtqyb.html
- ***************************************************/
+/*****************************************************************************************
+ ***                                      ImSEten                                      ***
+ *****************************************************************************************
+ *                                                                                       *
+ *                Project Name : Esp32-Assistant                                         *
+ *                                                                                       *
+ *                   File Name : multi-threads.ino                                       *
+ *                                                                                       *
+ *                  Programmer : ImSEten                                                 *
+ *                                                                                       *
+ *                Started Date : 2026/01/01                                              *
+ *                                                                                       *
+ *                 Last Update : 2026/01/06                                              *
+ *                                                                                       *
+ *---------------------------------------------------------------------------------------*
+ * Functions:                                                                            *
+ *   connect_WIFI -- Connect to the WIFI                                                 *
+ *   connectHTTP -- Connect to the network via HTTP                                      *
+ *   connectHTTPS -- Connect to the network via HTTPS                                    *
+ *   connectHTTPandHTTPS -- Automatically choose HTTP/HTTPS to the network               *
+ *   getApihzHost -- Get the dynamic IP address of apihz.com                             *
+ *   getWeatherFromHost -- Get weather info through the dynamic IP of apihz              *
+ *   getWeather -- Get weather info from apihz                                           *
+ *   getAIAnswerFromHost -- Get AI answer through the dynamic IP of apihz                *
+ *   getAIAnswer -- Get AI answer from apihz                                             *
+ *   Connect_WIFI -- multi-thread call connect_WIFI function                             *
+ *   GetWeather -- multi-thread call getWeather function                                 *
+ *   GetAIAnswer -- multi-thread call getAIAnswer function                               *
+ *   ReadFromSerial -- multi-thread read data from Serial input                          *
+ *   GetAIQuestions -- multi-thread read data from channel Serial and Other              *
+ * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+
 
 // ================ Serial Settings =================
-const uint MAX_SERIAL_INPUT = 1024;
-const uint SERIAL_PORT = 115200;
+const uint MAX_SERIAL_INPUT = 1024;  // serial输入最大值
+const uint SERIAL_PORT = 115200;     // serial 端口
 // ==================================================
+
 
 // ================= WiFi Settings ==================
 const String WIFI_SSID = "OpenWRT_2G";
@@ -24,16 +54,23 @@ const int HTTPS_PORT = 443;
 // ==================================================
 
 
+/****************************************************
+ * see: https://www.apihz.cn/api/tqtqyb.html
+ ***************************************************/
+
+
 // =================== 配置你的信息 ===================
-const String HOST_API = "https://cn.apihz.cn/";
-const String GET_API = "https://api.apihz.cn/getapi.php";
-const String API_ID = "10011341";
+const String HOST_API = "https://cn.apihz.cn/";             // apihz官网，在获取不到动态连接地址的时候使用该地址访问api接口。
+const String GET_API = "https://api.apihz.cn/getapi.php";   // api盒子获取动态连接地址。
+const String API_ID = "10011341";                           // 从apihz.cn注册获取
 const String API_KEY = "967127bed467835653426373aab82828";  // 从apihz.cn注册获取
 const String CITY = "成都";                                 // 你想要查询的城市（如beijing, shanghai等）
 const uint WEATHER_DELAY_TIME = 600000;                     // 延迟时间
-const uint MUTEX_WAIT = 100;                                // mutex等待时间，100ms
 const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;                 // AI提问最大字符长度
 // ==================================================
+
+
+const uint MUTEX_WAIT = 100;  // mutex等待时间，100ms
 
 
 // CA证书（apihz.cn的证书，用于安全验证）
@@ -77,33 +114,40 @@ Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
 
 // 定义WIFI配置
 typedef struct {
-  String hostname;
-  String ssid;
-  String password;
-  bool auto_reconnect;
-  SemaphoreHandle_t mutex;  // 锁
+  String hostname;          // 本设备在网络中显示的名称
+  String ssid;              // 要连接的wifi名称
+  String password;          // 要连接的wifi密码
+  bool auto_reconnect;      // 如果为true，当wifi断开时会自动重连
+  SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
 } WIFIConfig;
 
+// 定义天气查询配置
 typedef struct {
-  String city;
-  uint delay_time;
-  SemaphoreHandle_t mutex;  // 锁
+  String city;              // 查询天气的城市
+  uint delay_time;          // 间隔多少ms查询一次天气
+  SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
 } WeatherConfig;
 
+
+// 定义AI查询配置
 typedef struct {
   QueueHandle_t serial_queue;  // 从serial中输入
   QueueHandle_t words_queue;   // 输出给AI
 } AIConfig;
 
-// 队列句柄
+// =============队列句柄初始化=============
 QueueHandle_t Serial_Queue = NULL;
 QueueHandle_t Ai_Words_Queue = NULL;
+// ======================================
 
-// init configs
+// =============init configs=============
 WIFIConfig Wifi_Config;
 WeatherConfig Weather_Config;
 AIConfig Ai_Config;
+// ======================================
 
+
+// WIFI连接
 void connect_WIFI(WIFIConfig *wifi_config) {
   if (wifi_config == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: WIFI配置为空，程序退出!");
@@ -122,6 +166,7 @@ void connect_WIFI(WIFIConfig *wifi_config) {
   Serial.println(WiFi.localIP());
 }
 
+// [HTTP]连接
 String connectHTTP(String url) {
   String result;
   if (url.isEmpty()) {
@@ -154,6 +199,7 @@ String connectHTTP(String url) {
   return result;
 }
 
+// [HTTPS]连接
 String connectHTTPS(String url, String ca_cert) {
   String result;
   int httpCode;
@@ -203,6 +249,7 @@ String connectHTTPS(String url, String ca_cert) {
   return result;
 }
 
+// 自动匹配[HTTP]或[HTTPS]连接
 String connectHTTPandHTTPS(String url, String ca_cert) {
   if (url.isEmpty()) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect url is nil");
@@ -218,6 +265,7 @@ String connectHTTPandHTTPS(String url, String ca_cert) {
   }
 }
 
+// 获取apihz动态ip
 String getApihzHost(String get_api_url, String ca_cert) {
   String host;
   if (get_api_url.isEmpty()) {
@@ -255,6 +303,7 @@ String getApihzHost(String get_api_url, String ca_cert) {
   return host;
 }
 
+// 从apihz中获取天气信息
 void getWeatherFromHost(String host, String ca_cert, String city) {
   if (host.isEmpty()) {
     host = HOST_API;
@@ -288,6 +337,7 @@ void getWeatherFromHost(String host, String ca_cert, String city) {
   }
 }
 
+// 获取天气信息
 void getWeather(String city) {
   String host = getApihzHost(GET_API, "");
 
@@ -299,6 +349,7 @@ void getWeather(String city) {
   getWeatherFromHost(host, "", city);
 }
 
+// 从apihz中获取AI问答结果。
 String getAIAnswerFromHost(String host, String ca_cert, String words) {
   if (host.isEmpty()) {
     host = HOST_API;
@@ -331,6 +382,7 @@ String getAIAnswerFromHost(String host, String ca_cert, String words) {
   }
 }
 
+// 获取AI问答结果。
 String getAIAnswer(String words) {
   if (words.isEmpty()) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向AI提问的内容为空");
@@ -347,6 +399,7 @@ String getAIAnswer(String words) {
   return answer;
 }
 
+// 在多线程中运行该函数，连接WIFI，并设置自动连接
 void Connect_WIFI(void *pvParameters) {
   if (pvParameters == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: Connect_WIFI入参为NULL");
@@ -361,6 +414,7 @@ void Connect_WIFI(void *pvParameters) {
   connect_WIFI(wifi_config);
 }
 
+// 在多线程中运行该函数，获取天气信息
 void GetWeather(void *pvParameters) {
   if (pvParameters == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetWeather入参为NULL");
@@ -387,6 +441,7 @@ void GetWeather(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
+// 在多线程中运行该函数，获取AI问答信息。
 void GetAIAnswer(void *pvParameters) {
   if (pvParameters == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
@@ -411,6 +466,7 @@ void GetAIAnswer(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
+// 在多线程中运行该函数，从serial中获取输入。
 void ReadFromSerial(void *pvParameters) {
   if (pvParameters == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: ReadFromSerial入参为NULL");
@@ -439,6 +495,7 @@ void ReadFromSerial(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
+// 在多线程中运行该函数，获取对AI进行提问的问题。即获取输入给AI的input。
 void GetAIQuestions(void *pvParameters) {
   if (pvParameters == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
@@ -470,6 +527,7 @@ void GetAIQuestions(void *pvParameters) {
   vTaskDelete(NULL);
 }
 
+// 主函数
 void setup() {
   // start usb serial
   Serial.begin(SERIAL_PORT);
