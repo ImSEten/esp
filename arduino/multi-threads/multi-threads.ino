@@ -36,6 +36,16 @@
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
+ /*
+  TODO:
+    1、当WIFI连接成功后，L灯亮起3s后熄灭（白灯）
+    2、WIFI连接中时，L灯快速闪烁（白灯）
+    3、WIFI断开连接时，L灯慢速闪烁（白灯）
+    4、读取PMS9103M数据
+    5、读取MQ-4和MQ-135
+ */
+
+
 // ================ Serial Settings =================
 const uint MAX_SERIAL_INPUT = 1024;  // serial输入最大值
 const uint SERIAL_PORT = 115200;     // serial 端口
