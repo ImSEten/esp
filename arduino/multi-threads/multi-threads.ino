@@ -2,6 +2,7 @@
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
 #include <ArduinoJson.h>
+#include <FastLED.h>
 
 /*****************************************************************************************
  ***                                      ImSEten                                      ***
@@ -33,16 +34,24 @@
  *   GetAIAnswer -- multi-thread call getAIAnswer function                               *
  *   ReadFromSerial -- multi-thread read data from Serial input                          *
  *   GetAIQuestions -- multi-thread read data from channel Serial and Other              *
+ *   setLedColor -- set led RGB color                                                    *
+ *   setLedBrightness -- set led brightness                                              *
+ *   lazyOnLed -- light on led slowly                                                    *
+ *   lazyOffLed -- light off led slowly                                                  *
+ *   SetupLlight -- init L-light, slowly light up and then slowly light off              *
+ *   LlightWifi -- light up 3s when wifi connected, blink 2times/1s when wifi lost       *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
 
 
- /*
+/*
   TODO:
+    1、读取PMS9103M数据
+    2、当空气质量为优时，亮绿灯；当空气质量为一般时亮黄灯，当空气质量为差时，亮红灯；当空气质量极差时，红灯闪烁。
+    2、读取MQ-4和MQ-135
+
+  Done:
     1、当WIFI连接成功后，L灯亮起3s后熄灭（白灯）
     2、WIFI连接中时，L灯快速闪烁（白灯）
-    3、WIFI断开连接时，L灯慢速闪烁（白灯）
-    4、读取PMS9103M数据
-    5、读取MQ-4和MQ-135
  */
 
 
@@ -122,6 +131,15 @@ Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
 -----END CERTIFICATE-----
 )string_literal";
 
+#define NUM_L_LEDS 8
+
+typedef struct {
+  uint num_leds;            // led灯珠数量
+  CRGB *leds;               // led颜色
+  uint brightness;          // led亮度
+  SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
+} Light;
+
 // 定义WIFI配置
 typedef struct {
   String hostname;          // 本设备在网络中显示的名称
@@ -145,6 +163,10 @@ typedef struct {
   QueueHandle_t words_queue;   // 输出给AI
 } AIConfig;
 
+// =============Llight初始化==============
+Light L_Light;
+// ======================================
+
 // =============队列句柄初始化=============
 QueueHandle_t Serial_Queue = NULL;
 QueueHandle_t Ai_Words_Queue = NULL;
@@ -156,6 +178,63 @@ WeatherConfig Weather_Config;
 AIConfig Ai_Config;
 // ======================================
 
+
+void setLedColor(Light *light, uint R, uint G, uint B) {
+  if (NULL == light) {
+    return;
+  }
+  for (int i = 0; i <= light->num_leds - 1; i++) {  // set color
+    light->leds[i] = CRGB(R, G, B);
+  }
+}
+
+void setLedBrightness(Light *light) {
+  if (NULL == light) {
+    return;
+  }
+  FastLED.setBrightness(light->brightness);
+  FastLED.show();
+}
+
+void lazyOnLed(Light *light, uint delay_time) {
+  if (NULL == light) {
+    return;
+  }
+  for (int i = 0; i <= light->brightness; i++) {  // light up
+    FastLED.setBrightness(i);
+    vTaskDelay(pdMS_TO_TICKS(delay_time));
+    FastLED.show();
+  }
+}
+
+void lazyOffLed(Light *light, uint delay_time) {
+  if (NULL == light) {
+    return;
+  }
+  for (int i = light->brightness; i >= 0; i--) {
+    FastLED.setBrightness(i);  // 渐灭
+    vTaskDelay(pdMS_TO_TICKS(delay_time));
+    FastLED.show();
+  }
+  light->brightness = 0;
+}
+
+void SetupLlight(Light *light) {
+  uint delay_time = 10;
+  if (NULL == light) {
+    return;
+  }
+  // put your setup code here, to run once:
+  if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {
+    FastLED.addLeds<WS2812, PIN_RGB_LED, GRB>(light->leds, light->num_leds);
+    setLedColor(light, 255, 255, 255);  // whight
+    lazyOnLed(light, delay_time);
+    lazyOffLed(light, delay_time);
+    xSemaphoreGive(light->mutex);
+  } else {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: SetupLlight无法获取light锁");
+  }
+}
 
 // WIFI连接
 void connect_WIFI(WIFIConfig *wifi_config) {
@@ -409,9 +488,57 @@ String getAIAnswer(String words) {
   return answer;
 }
 
+/*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+ *                         多线程函数                            *
+ -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+void LlightWifi(void *pvParameters) {
+  uint connected_brightness = 255;
+  uint connecting_brightness = 120;
+  if (NULL == pvParameters) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: LlightWifi入参为NULL");
+    return;
+  }
+  Light *light = (Light *)pvParameters;
+  wl_status_t pre_wifi_status = WiFi.status();
+  while (true) {
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 5));  // 0.5s
+    if (WiFi.status() == WL_CONNECTED) {
+      if (WiFi.status() == pre_wifi_status) {  // 状态未发生变化，重新轮询
+        pre_wifi_status = WiFi.status();
+        continue;
+      } else {  // WiFi状态变化，亮灯3s后熄灭
+        pre_wifi_status = WiFi.status();
+        if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {  // 获取锁
+          light->brightness = connected_brightness;
+          setLedBrightness(light);                     // light up
+          vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 30));  // 3s
+          light->brightness = 0;
+          setLedBrightness(light);       // light off
+          xSemaphoreGive(light->mutex);  // 释放锁
+        } else {
+          Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: LlightWifi无法获取light锁");
+        }
+      }
+    } else {
+      pre_wifi_status = WiFi.status();
+      if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {  // 获取锁
+        light->brightness = 0;
+        setLedBrightness(light);                    // light off
+        vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 5));  // 1s
+        light->brightness = connecting_brightness;
+        setLedBrightness(light);       // light up
+        xSemaphoreGive(light->mutex);  // 释放锁
+      } else {
+        Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: LlightWifi无法获取light锁");
+      }
+    }
+  }
+}
+
 // 在多线程中运行该函数，连接WIFI，并设置自动连接
 void Connect_WIFI(void *pvParameters) {
-  if (pvParameters == NULL) {
+  if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: Connect_WIFI入参为NULL");
     return;
   }
@@ -426,7 +553,7 @@ void Connect_WIFI(void *pvParameters) {
 
 // 在多线程中运行该函数，获取天气信息
 void GetWeather(void *pvParameters) {
-  if (pvParameters == NULL) {
+  if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetWeather入参为NULL");
     return;
   }
@@ -453,7 +580,7 @@ void GetWeather(void *pvParameters) {
 
 // 在多线程中运行该函数，获取AI问答信息。
 void GetAIAnswer(void *pvParameters) {
-  if (pvParameters == NULL) {
+  if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
     return;
   }
@@ -478,7 +605,7 @@ void GetAIAnswer(void *pvParameters) {
 
 // 在多线程中运行该函数，从serial中获取输入。
 void ReadFromSerial(void *pvParameters) {
-  if (pvParameters == NULL) {
+  if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: ReadFromSerial入参为NULL");
     return;
   }
@@ -507,7 +634,7 @@ void ReadFromSerial(void *pvParameters) {
 
 // 在多线程中运行该函数，获取对AI进行提问的问题。即获取输入给AI的input。
 void GetAIQuestions(void *pvParameters) {
-  if (pvParameters == NULL) {
+  if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
     return;
   }
@@ -545,12 +672,23 @@ void setup() {
   SemaphoreHandle_t wifi_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t weather_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t ai_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t l_light_mutex = xSemaphoreCreateMutex();
   Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
   Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
-  if (wifi_mutex == NULL || weather_mutex == NULL) {
+  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
     return;
   }
+
+  CRGB *l_leds = (CRGB *)malloc(sizeof(CRGB) * NUM_L_LEDS);
+
+  // L-light config
+  L_Light = {
+    num_leds: NUM_L_LEDS,
+    leds: l_leds,
+    brightness: 255,
+    mutex: l_light_mutex,
+  };
 
   // connect wifi config
   Wifi_Config = {
@@ -574,10 +712,16 @@ void setup() {
   };
 
   // 任务句柄（可选）
+  TaskHandle_t taskLlightWifiHandle = NULL;
   TaskHandle_t taskReadFromSerialHandle = NULL;
   TaskHandle_t taskGetWeatherHandle = NULL;
   TaskHandle_t taskGetAIQuestionsHandle = NULL;
   TaskHandle_t taskGetAIAnswerHandle = NULL;
+
+  // L-light wifi
+  SetupLlight(&L_Light);
+  xTaskCreatePinnedToCore(
+    LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 1);  // tskNO_AFFINITY表示不限制core
 
   // Connect wifi
   Connect_WIFI((void *)&Wifi_Config);
