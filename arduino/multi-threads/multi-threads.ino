@@ -534,6 +534,9 @@ void LlightWifi(void *pvParameters) {
       }
     }
   }
+  free(light->leds);
+  light->leds = NULL;
+  delete light;
 }
 
 // 在多线程中运行该函数，连接WIFI，并设置自动连接
