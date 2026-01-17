@@ -4,7 +4,9 @@
 #include <ArduinoJson.h>
 #include <FastLED.h>
 
+#include "LightController.h"
 #include "AiriqController.h"
+
 
 /*****************************************************************************************
  ***                                   ESP32S3-N16R8                                   ***
@@ -135,12 +137,6 @@ Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
 
 #define NUM_L_LEDS 8
 
-typedef struct {
-  uint num_leds;            // led灯珠数量
-  CRGB *leds;               // led颜色
-  uint brightness;          // led亮度
-  SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
-} Light;
 
 // 定义WIFI配置
 typedef struct {
@@ -178,65 +174,9 @@ QueueHandle_t Ai_Words_Queue = NULL;
 WIFIConfig Wifi_Config;
 WeatherConfig Weather_Config;
 AIConfig Ai_Config;
+PMData PmData;
 // ======================================
 
-
-void setLedColor(Light *light, uint R, uint G, uint B) {
-  if (NULL == light) {
-    return;
-  }
-  for (int i = 0; i <= light->num_leds - 1; i++) {  // set color
-    light->leds[i] = CRGB(R, G, B);
-  }
-}
-
-void setLedBrightness(Light *light) {
-  if (NULL == light) {
-    return;
-  }
-  FastLED.setBrightness(light->brightness);
-  FastLED.show();
-}
-
-void lazyOnLed(Light *light, uint delay_time) {
-  if (NULL == light) {
-    return;
-  }
-  for (int i = 0; i <= light->brightness; i++) {  // light up
-    FastLED.setBrightness(i);
-    vTaskDelay(pdMS_TO_TICKS(delay_time));
-    FastLED.show();
-  }
-}
-
-void lazyOffLed(Light *light, uint delay_time) {
-  if (NULL == light) {
-    return;
-  }
-  for (int i = light->brightness; i >= 0; i--) {
-    FastLED.setBrightness(i);  // 渐灭
-    vTaskDelay(pdMS_TO_TICKS(delay_time));
-    FastLED.show();
-  }
-  light->brightness = 0;
-}
-
-void SetupLlight(Light *light) {
-  uint delay_time = 10;
-  if (NULL == light) {
-    return;
-  }
-  // put your setup code here, to run once:
-  if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {
-    FastLED.addLeds<WS2812, PIN_RGB_LED, GRB>(light->leds, light->num_leds);
-    setLedColor(light, 255, 255, 255);  // whight
-    lazyOnLed(light, delay_time);
-    lazyOffLed(light, delay_time);
-    xSemaphoreGive(light->mutex);
-  } else {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: SetupLlight无法获取light锁");
-  }
-}
 
 // WIFI连接
 void connect_WIFI(WIFIConfig *wifi_config) {
@@ -553,8 +493,16 @@ void GetAirIq(void *pvParameters) {
       vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
       continue;
     }
-    getAirIq(pmData);
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+    // 读取PMS9103M传感器数据
+    if (readPMS9103MData(pmData)) {
+      // 打印读取到的数据
+      // Serial.println("PMS9103M数据读取成功:");
+      Serial.printf("PM1.0 (标准): %d μg/m³\nPM2.5 (标准): %d μg/m³\nPM10.0 (标准): %d μg/m³\n", pmData->pm1_0, pmData->pm2_5, pmData->pm10_0);
+      Serial.printf("PM1.0 (大气): %d μg/m³\nPM2.5 (大气): %d μg/m³\nPM10.0 (大气): %d μg/m³\n", pmData->pm1_0_atm, pmData->pm2_5_atm, pmData->pm10_0_atm);
+      Serial.printf("0.3μm颗粒数: %d 个/0.1L\n0.5μm颗粒数: %d 个/0.1L\n1.0μm颗粒数: %d 个/0.1L\n2.5μm颗粒数: %d 个/0.1L\n5.0μm颗粒数: %d 个/0.1L\n10.0μm颗粒数: %d 个/0.1L\n", pmData->count_0_3, pmData->count_0_5, pmData->count_1_0, pmData->count_2_5, pmData->count_5_0, pmData->count_10_0);
+      Serial.println("------------------------");
+    }
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 50));
   }
 }
 
@@ -690,6 +638,7 @@ void GetAIQuestions(void *pvParameters) {
 void setup() {
   // start usb serial
   Serial.begin(SERIAL_PORT);
+  Serial0.begin(9600);
   // create mutex;
   SemaphoreHandle_t wifi_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t weather_mutex = xSemaphoreCreateMutex();
@@ -703,7 +652,6 @@ void setup() {
   }
 
   CRGB *l_leds = (CRGB *)malloc(sizeof(CRGB) * NUM_L_LEDS);
-  PMData pmData;
 
   // L-light config
   L_Light = {
@@ -736,16 +684,22 @@ void setup() {
 
   // 任务句柄（可选）
   TaskHandle_t taskLlightWifiHandle = NULL;
+  TaskHandle_t taskGetAirIqHandle = NULL;
   TaskHandle_t taskReadFromSerialHandle = NULL;
   TaskHandle_t taskGetWeatherHandle = NULL;
   TaskHandle_t taskGetAIQuestionsHandle = NULL;
   TaskHandle_t taskGetAIAnswerHandle = NULL;
 
   // L-light wifi
-  SetupLlight(&L_Light);
+  FastLED.addLeds<WS2812, PIN_RGB_LED, RGB>(L_Light.leds, L_Light.num_leds);
+  setupLight(&L_Light, COLOR_WHITE);
+  // -----------------------灯光控制-----------------------
   xTaskCreatePinnedToCore(
     LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 1);  // tskNO_AFFINITY表示不限制core
-
+  //-----------------------传感器-----------------------
+  xTaskCreatePinnedToCore(
+    GetAirIq, "TaskGetAirIq", 8192, (void *)&PmData, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
+  // -----------------------Network-----------------------
   // Connect wifi
   Connect_WIFI((void *)&Wifi_Config);
   // update local time
