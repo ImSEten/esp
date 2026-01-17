@@ -4,6 +4,8 @@
 #include <ArduinoJson.h>
 #include <FastLED.h>
 
+#include "AiriqController.h"
+
 /*****************************************************************************************
  ***                                   ESP32S3-N16R8                                   ***
  *****************************************************************************************
@@ -539,6 +541,23 @@ void LlightWifi(void *pvParameters) {
   delete light;
 }
 
+void GetAirIq(void *pvParameters) {
+  if (NULL == pvParameters) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAirIq入参为NULL");
+    return;
+  }
+  PMData *pmData = (PMData *)pvParameters;
+  while (true) {
+    if (NULL == pmData) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAirIq的pmData为NULL");
+      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      continue;
+    }
+    getAirIq(pmData);
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+  }
+}
+
 // 在多线程中运行该函数，连接WIFI，并设置自动连接
 void Connect_WIFI(void *pvParameters) {
   if (NULL == pvParameters) {
@@ -684,6 +703,7 @@ void setup() {
   }
 
   CRGB *l_leds = (CRGB *)malloc(sizeof(CRGB) * NUM_L_LEDS);
+  PMData pmData;
 
   // L-light config
   L_Light = {
