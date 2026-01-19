@@ -49,13 +49,15 @@
 
 /*
   TODO:
-    1、读取PMS9103M数据
     2、当空气质量为优时，亮绿灯；当空气质量为一般时亮黄灯，当空气质量为差时，亮红灯；当空气质量极差时，红灯闪烁。
     2、读取MQ-4和MQ-135
 
   Done:
     1、当WIFI连接成功后，L灯亮起3s后熄灭（白灯）
     2、WIFI连接中时，L灯快速闪烁（白灯）
+    3、通过apihz获取天气信息
+    4、通过apihz得到AI能力
+    3、读取PMS9103M空气质量传感器数据
  */
 
 
@@ -496,13 +498,9 @@ void GetAirIq(void *pvParameters) {
     // 读取PMS9103M传感器数据
     if (readPMS9103MData(pmData)) {
       // 打印读取到的数据
-      // Serial.println("PMS9103M数据读取成功:");
-      Serial.printf("PM1.0 (标准): %d μg/m³\nPM2.5 (标准): %d μg/m³\nPM10.0 (标准): %d μg/m³\n", pmData->pm1_0, pmData->pm2_5, pmData->pm10_0);
-      Serial.printf("PM1.0 (大气): %d μg/m³\nPM2.5 (大气): %d μg/m³\nPM10.0 (大气): %d μg/m³\n", pmData->pm1_0_atm, pmData->pm2_5_atm, pmData->pm10_0_atm);
-      Serial.printf("0.3μm颗粒数: %d 个/0.1L\n0.5μm颗粒数: %d 个/0.1L\n1.0μm颗粒数: %d 个/0.1L\n2.5μm颗粒数: %d 个/0.1L\n5.0μm颗粒数: %d 个/0.1L\n10.0μm颗粒数: %d 个/0.1L\n", pmData->count_0_3, pmData->count_0_5, pmData->count_1_0, pmData->count_2_5, pmData->count_5_0, pmData->count_10_0);
-      Serial.println("------------------------");
+      printAirIqData(pmData);
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 50));
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 50)); // 5s读取一次
   }
 }
 
@@ -644,9 +642,12 @@ void setup() {
   SemaphoreHandle_t weather_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t ai_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t l_light_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t airiq_mutex = xSemaphoreCreateMutex();
+  // create queue
   Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
   Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
-  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex) {
+  // check mutex and queue created
+  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == airiq_mutex) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
     return;
   }
@@ -677,10 +678,14 @@ void setup() {
     mutex: weather_mutex,
   };
 
+  // Ai answer config
   Ai_Config = {
     serial_queue: Serial_Queue,
     words_queue: Ai_Words_Queue,
   };
+
+  // AirIq data
+  PmData.mutex = airiq_mutex;
 
   // 任务句柄（可选）
   TaskHandle_t taskLlightWifiHandle = NULL;
@@ -695,7 +700,7 @@ void setup() {
   setupLight(&L_Light, COLOR_WHITE);
   // -----------------------灯光控制-----------------------
   xTaskCreatePinnedToCore(
-    LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 1);  // tskNO_AFFINITY表示不限制core
+    LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 0);  // tskNO_AFFINITY表示不限制core
   //-----------------------传感器-----------------------
   xTaskCreatePinnedToCore(
     GetAirIq, "TaskGetAirIq", 8192, (void *)&PmData, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
