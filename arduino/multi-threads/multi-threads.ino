@@ -59,6 +59,7 @@
     [x]通过apihz获取天气信息
     [x]通过apihz得到AI能力
     [x]读取PMS9103M空气质量传感器数据
+    [x]支持PMS9103M设置主动模式和被动模式，并默认为被动模式，10min报告一次结果。
  */
 
 
@@ -97,6 +98,8 @@ const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;                 // AI提问最大字
 
 
 const uint MUTEX_WAIT = 100;  // mutex等待时间，100ms
+
+HardwareSerial *pms_serial = &Serial0;
 
 
 // CA证书（apihz.cn的证书，用于安全验证）
@@ -178,6 +181,7 @@ WIFIConfig Wifi_Config;
 WeatherConfig Weather_Config;
 AIConfig Ai_Config;
 PMData PmData;
+PMSConfig Pms_Config;
 // ======================================
 
 
@@ -489,19 +493,39 @@ void GetAirIq(void *pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAirIq入参为NULL");
     return;
   }
-  PMData *pmData = (PMData *)pvParameters;
+  PMSConfig *pms_config = (PMSConfig *)pvParameters;
+  PMData pmData = {
+    mutex: xSemaphoreCreateMutex(),
+  };
+  if (NULL == pmData.mutex) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
+    return;
+  }
+
   while (true) {
-    if (NULL == pmData) {
-      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAirIq的pmData为NULL");
+    if (NULL == pms_config) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAirIq的pms_config为NULL");
       vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
       continue;
     }
-    // 读取PMS9103M传感器数据
-    if (readPMS9103MData(pmData)) {
-      // 打印读取到的数据
-      serialPrintAirIqData(pmData);
+    if (NULL != pms_config->mutex && xSemaphoreTake(pms_config->mutex, portMAX_DELAY)) {  // 获取锁
+      PMS_Mode mode = pms_config->mode;                                                   // 获取模式
+      xSemaphoreGive(pms_config->mutex);                                                  // 释放锁
+      if (PMS_ACTIVE_MODE == mode) {                                                      // 主动模式，无需定时器，300ms轮询一次
+        // 读取PMS9103M传感器数据
+        if (readPMS9103MData(&Serial0, &pmData)) {
+          // 打印读取到的数据
+          serialPrintAirIqData(&pmData);
+        }
+      } else if (PMS_PASSIVE_MODE == mode) {  // 被动模式，需要定时器，300ms轮询一次对于被动模式太快，需要使用定时器检查是否需要读取数据。
+        // 读取PMS9103M传感器数据
+        if (requestPMSDataInPassiveMode(&Serial0, &pmData)) {
+          // 打印读取到的数据
+          serialPrintAirIqData(&pmData);
+        }
+      }
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 3)); // 0.3s读取一次
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 10 * 60));  // 1min读取一次
   }
 }
 
@@ -643,12 +667,12 @@ void setup() {
   SemaphoreHandle_t weather_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t ai_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t l_light_mutex = xSemaphoreCreateMutex();
-  SemaphoreHandle_t airiq_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t pms_config_mutex = xSemaphoreCreateMutex();
   // create queue
   Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
   Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
   // check mutex and queue created
-  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == airiq_mutex) {
+  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == pms_config_mutex) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
     return;
   }
@@ -661,6 +685,15 @@ void setup() {
     leds: l_leds,
     brightness: 255,
     mutex: l_light_mutex,
+  };
+
+  // PMS9103M config
+  Pms_Config = {
+    pms_set_pin: 0,              // PMS9103M的pin针引脚
+    mode: PMS_PASSIVE_MODE,      // PMS_PASSIVE_MODE为被动模式，PMS_ACTIVE_MODE为主动模式（主动上报值）。
+    standby_status: PMS_NORMAL,  // PMS_STANDBY为待机模式，PMS_NORMAL为正常模式
+    sleep_status: false,         // 是否为睡眠状态，SET_PIN低电平为睡眠状态
+    mutex: pms_config_mutex,     // 锁，获取本结构体中任何成员变量都需等此锁
   };
 
   // connect wifi config
@@ -685,9 +718,6 @@ void setup() {
     words_queue: Ai_Words_Queue,
   };
 
-  // AirIq data
-  PmData.mutex = airiq_mutex;
-
   // 任务句柄（可选）
   TaskHandle_t taskLlightWifiHandle = NULL;
   TaskHandle_t taskGetAirIqHandle = NULL;
@@ -699,12 +729,15 @@ void setup() {
   // L-light wifi
   FastLED.addLeds<WS2812, PIN_RGB_LED, RGB>(L_Light.leds, L_Light.num_leds);
   setupLight(&L_Light, COLOR_WHITE);
+  if (setPMSWorkMode(pms_serial, &Pms_Config)) {
+    Serial.println("set PMSWorkMode successfully");
+  }
   // -----------------------灯光控制-----------------------
   xTaskCreatePinnedToCore(
     LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 0);  // tskNO_AFFINITY表示不限制core
-  //-----------------------传感器-----------------------
+  // //-----------------------传感器-----------------------
   xTaskCreatePinnedToCore(
-    GetAirIq, "TaskGetAirIq", 8192, (void *)&PmData, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
+    GetAirIq, "TaskGetAirIq", 8192, (void *)&Pms_Config, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
   // -----------------------Network-----------------------
   // Connect wifi
   Connect_WIFI((void *)&Wifi_Config);
