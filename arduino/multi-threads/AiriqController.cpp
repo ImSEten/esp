@@ -1,6 +1,6 @@
 #include "AiriqController.h"
 
-void printAirIqData(PMData *pmData) {
+void serialPrintAirIqData(PMData *pmData) {
   if (xSemaphoreTake(pmData->mutex, portMAX_DELAY)) {  // 获取锁
     Serial.printf("PM1.0 (标准): %d μg/m³\nPM2.5 (标准): %d μg/m³\nPM10.0 (标准): %d μg/m³\n", pmData->pm1_0, pmData->pm2_5, pmData->pm10_0);
     Serial.printf("PM1.0 (大气): %d μg/m³\nPM2.5 (大气): %d μg/m³\nPM10.0 (大气): %d μg/m³\n", pmData->pm1_0_atm, pmData->pm2_5_atm, pmData->pm10_0_atm);
@@ -11,7 +11,7 @@ void printAirIqData(PMData *pmData) {
 }
 
 // 读取PMS9103M传感器数据的函数
-boolean readPMS9103MData(PMData *pmData) {
+bool readPMS9103MData(PMData *pmData) {
   // PMS9103M数据帧格式：以0x42 0x4D开头，长度32字节
   // 从文档附录A：主动式传输协议
   // 检查是否有32字节数据可读

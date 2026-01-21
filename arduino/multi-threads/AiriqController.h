@@ -20,6 +20,5 @@ struct PMData {
   SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
 };
 
-void getAirIq(PMData *pmData);
-boolean readPMS9103MData(PMData *pmData);
-void printAirIqData(PMData *pmData);
+bool readPMS9103MData(PMData *pmData);
+void serialPrintAirIqData(PMData *pmData);

@@ -49,15 +49,16 @@
 
 /*
   TODO:
-    2、当空气质量为优时，亮绿灯；当空气质量为一般时亮黄灯，当空气质量为差时，亮红灯；当空气质量极差时，红灯闪烁。
-    2、读取MQ-4和MQ-135
+    [-] 当空气质量为优时，亮绿灯；当空气质量为一般时亮黄灯，当空气质量为差时，亮红灯；当空气质量极差时，红灯闪烁。
+    [-] 读取MQ-4和MQ-135
+    [-] PMS9103M支持睡眠模式
 
   Done:
-    1、当WIFI连接成功后，L灯亮起3s后熄灭（白灯）
-    2、WIFI连接中时，L灯快速闪烁（白灯）
-    3、通过apihz获取天气信息
-    4、通过apihz得到AI能力
-    3、读取PMS9103M空气质量传感器数据
+    [x]当WIFI连接成功后，L灯亮起3s后熄灭（白灯）
+    [x]WIFI连接中时，L灯快速闪烁（白灯）
+    [x]通过apihz获取天气信息
+    [x]通过apihz得到AI能力
+    [x]读取PMS9103M空气质量传感器数据
  */
 
 
@@ -498,9 +499,9 @@ void GetAirIq(void *pvParameters) {
     // 读取PMS9103M传感器数据
     if (readPMS9103MData(pmData)) {
       // 打印读取到的数据
-      printAirIqData(pmData);
+      serialPrintAirIqData(pmData);
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 50)); // 5s读取一次
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 3)); // 0.3s读取一次
   }
 }
 
