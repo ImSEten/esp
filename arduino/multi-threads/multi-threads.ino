@@ -5,7 +5,7 @@
 #include <FastLED.h>
 
 #include "LightController.h"
-#include "AiriqController.h"
+#include "AirIqController.h"
 
 
 /*****************************************************************************************
