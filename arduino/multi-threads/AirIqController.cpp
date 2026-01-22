@@ -167,7 +167,6 @@ bool readPMS9103MData(HardwareSerial *serial, PMData *pmData) {
   // 从文档附录A：主动式传输协议
   // 检查是否有32字节数据可读
   int lenth = serial->available();
-  Serial.printf("read lenth is %d\n", lenth);
   if (lenth >= 32) {
     // 读取32字节数据帧
     byte buffer[lenth];

@@ -6,6 +6,7 @@
 
 #include "LightController.h"
 #include "AirIqController.h"
+#include "NetworkController.h"
 
 
 /*****************************************************************************************
@@ -52,6 +53,8 @@
     [-] 当空气质量为优时，亮绿灯；当空气质量为一般时亮黄灯，当空气质量为差时，亮红灯；当空气质量极差时，红灯闪烁。
     [-] 读取MQ-4和MQ-135
     [-] PMS9103M支持睡眠模式
+    [-] PMS9103M支持切换模式，被动模式使用定时器而不是sleep。
+    [-] 创建http server，可通过连接http server获取天气信息/PMS9103M空气质量传感器信息，AI信息。
 
   Done:
     [x]当WIFI连接成功后，L灯亮起3s后熄灭（白灯）
@@ -144,15 +147,6 @@ Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
 #define NUM_L_LEDS 8
 
 
-// 定义WIFI配置
-typedef struct {
-  String hostname;          // 本设备在网络中显示的名称
-  String ssid;              // 要连接的wifi名称
-  String password;          // 要连接的wifi密码
-  bool auto_reconnect;      // 如果为true，当wifi断开时会自动重连
-  SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
-} WIFIConfig;
-
 // 定义天气查询配置
 typedef struct {
   String city;              // 查询天气的城市
@@ -184,124 +178,6 @@ PMData PmData;
 PMSConfig Pms_Config;
 // ======================================
 
-
-// WIFI连接
-void connect_WIFI(WIFIConfig *wifi_config) {
-  if (wifi_config == NULL) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: WIFI配置为空，程序退出!");
-    return;
-  }
-  Serial.printf("\nDEBUG: start to connect to %s", wifi_config->ssid.c_str());
-  WiFi.setHostname(wifi_config->hostname.c_str());
-  WiFi.begin(wifi_config->ssid.c_str(), wifi_config->password.c_str());
-
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.print(".");
-  }
-  Serial.println("\nDEBUG: WiFi connected");
-  Serial.print("DEBUG: ip address: ");
-  Serial.println(WiFi.localIP());
-}
-
-// [HTTP]连接
-String connectHTTP(String url) {
-  String result;
-  if (url.isEmpty()) {
-    return result;
-  }
-
-  HTTPClient http;
-  Serial.print("DEBUG: [HTTP] begin...\n");
-  // configure traged server and url
-  //http.begin("https://www.howsmyssl.com/a/check", ca); //HTTPS
-  http.begin(url);
-
-  Serial.print("DEBUG: [HTTP] GET...\n");
-  // start connection and send HTTP header
-  int httpCode = http.GET();
-
-  // httpCode will be negative on error
-  if (httpCode > 0) {
-    // HTTP header has been send and Server response header has been handled
-    Serial.printf("DEBUG: [HTTP] GET... code: %d\n", httpCode);
-
-    if (httpCode == HTTP_CODE_OK) {
-      result = http.getString();
-    }
-  } else {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTP] GET... failed, error: %s\n", http.errorToString(httpCode).c_str());
-  }
-
-  http.end();
-  return result;
-}
-
-// [HTTPS]连接
-String connectHTTPS(String url, String ca_cert) {
-  String result;
-  int httpCode;
-
-  // check url
-  if (url.isEmpty()) {
-    return result;
-  }
-  // create network client
-  NetworkClientSecure *client = new NetworkClientSecure;
-  if (client == NULL) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 创建network client失败");
-    return result;
-  }
-  // set ca_cert
-  if (ca_cert.isEmpty()) {
-    client->setInsecure();
-  } else {
-    client->setCACert(ca_cert.c_str());
-  }
-
-  {
-    // Add a scoping block for HTTPClient https to make sure it is destroyed before delete client
-    HTTPClient https;
-    if (https.begin(*client, url)) {
-      Serial.println("DEBUG: [HTTPS] GET...");
-      httpCode = https.GET();
-
-      if (httpCode > 0) {
-        Serial.printf("DEBUG: [HTTPS] GET... code: %d\n", httpCode);
-
-        if (httpCode == HTTP_CODE_OK || httpCode == HTTP_CODE_MOVED_PERMANENTLY) {
-          result = https.getString();
-        } else {
-          Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: error: %s\n", https.errorToString(httpCode).c_str());
-        }
-      } else {
-        Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS] GET... failed, error: %s\n", https.errorToString(httpCode).c_str());
-      }
-      https.end();
-    } else {
-      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败");
-    }
-  }
-
-  delete client;
-  return result;
-}
-
-// 自动匹配[HTTP]或[HTTPS]连接
-String connectHTTPandHTTPS(String url, String ca_cert) {
-  if (url.isEmpty()) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect url is nil");
-    return "";
-  }
-
-  if (url.startsWith("https://")) {
-    Serial.printf("DEBUG: connect to https: %s\n", url.c_str());
-    return connectHTTPS(url, ca_cert);
-  } else {
-    Serial.printf("DEBUG: connect to http: %s\n", url.c_str());
-    return connectHTTP(url);
-  }
-}
 
 // 获取apihz动态ip
 String getApihzHost(String get_api_url, String ca_cert) {
