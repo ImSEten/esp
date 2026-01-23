@@ -26,4 +26,4 @@ void lazyOnLed(Light *light, uint delay_time);
 void lazyOffLed(Light *light, uint delay_time);
 void setupLight(Light *light, CRGB rgb);
 
-#endif // LIGHT_CONTROLLER_H
+#endif  // LIGHT_CONTROLLER_H

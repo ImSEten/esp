@@ -1,10 +1,11 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
-#include <ArduinoJson.h>
 #include <FastLED.h>
 
+#include "Common.h"
 #include "LightController.h"
+#include "ApihzController.h"
 #include "AirIqController.h"
 #include "NetworkController.h"
 
@@ -24,25 +25,6 @@
  *                 Last Update : 2026/01/13                                              *
  *                                                                                       *
  *---------------------------------------------------------------------------------------*
- * Functions:                                                                            *
- *   connect_WIFI -- Connect to the WIFI                                                 *
- *   connectHTTP -- Connect to the network via HTTP                                      *
- *   connectHTTPS -- Connect to the network via HTTPS                                    *
- *   connectHTTPandHTTPS -- Automatically choose HTTP/HTTPS to the network               *
- *   getApihzHost -- Get the dynamic IP address of apihz.com                             *
- *   getWeatherFromHost -- Get weather info through the dynamic IP of apihz              *
- *   getWeather -- Get weather info from apihz                                           *
- *   getAIAnswerFromHost -- Get AI answer through the dynamic IP of apihz                *
- *   getAIAnswer -- Get AI answer from apihz                                             *
- *   Connect_WIFI -- multi-thread call connect_WIFI function                             *
- *   GetWeather -- multi-thread call getWeather function                                 *
- *   GetAIAnswer -- multi-thread call getAIAnswer function                               *
- *   ReadFromSerial -- multi-thread read data from Serial input                          *
- *   GetAIQuestions -- multi-thread read data from channel Serial and Other              *
- *   setLedColor -- set led RGB color                                                    *
- *   setLedBrightness -- set led brightness                                              *
- *   lazyOnLed -- light on led slowly                                                    *
- *   lazyOffLed -- light off led slowly                                                  *
  *   SetupLlight -- init L-light, slowly light up and then slowly light off              *
  *   LlightWifi -- light up 3s when wifi connected, blink 2times/1s when wifi lost       *
  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
@@ -79,98 +61,27 @@ const String HOSTNAME = "esp32s3-n16r8";
 // ==================================================
 
 
-// ================= HTTPS Settings =================
-const int HTTPS_PORT = 443;
-// ==================================================
-
-
-/****************************************************
- * see: https://www.apihz.cn/api/tqtqyb.html
- ***************************************************/
-
-
 // =================== 配置你的信息 ===================
-const String HOST_API = "https://cn.apihz.cn/";             // apihz官网，在获取不到动态连接地址的时候使用该地址访问api接口。
-const String GET_API = "https://api.apihz.cn/getapi.php";   // api盒子获取动态连接地址。
-const String API_ID = "10011341";                           // 从apihz.cn注册获取
-const String API_KEY = "967127bed467835653426373aab82828";  // 从apihz.cn注册获取
 const String CITY = "成都";                                 // 你想要查询的城市（如beijing, shanghai等）
-const uint WEATHER_DELAY_TIME = 600000;                     // 延迟时间
-const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;                 // AI提问最大字符长度
-// ==================================================
+const uint WEATHER_DELAY_TIME = DELAY_TIME * 10 * 600;                 // 延迟时间
+const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;           I提
+// ==============================================
 
 
-const uint MUTEX_WAIT = 100;  // mutex等待时间，100ms
+const uint MUTEX_WAIT = DELAY_TIME;  // mutex等待时间，100ms
 
 HardwareSerial *pms_serial = &Serial0;
 
-
-// CA证书（apihz.cn的证书，用于安全验证）
-const String CA_CERT_APIHZ = R"string_literal(
------BEGIN CERTIFICATE-----
-MIIGJzCCBQ+gAwIBAgIQfgSnzHPKkAFV5wMJd2vaZDANBgkqhkiG9w0BAQsFADCB
-jzELMAkGA1UEBhMCR0IxGzAZBgNVBAgTEkdyZWF0ZXIgTWFuY2hlc3RlcjEQMA4G
-A1UEBxMHU2FsZm9yZDEYMBYGA1UEChMPU2VjdGlnbyBMaW1pdGVkMTcwNQYDVQQD
-Ey5TZWN0aWdvIFJTQSBEb21haW4gVmFsaWRhdGlvbiBTZWN1cmUgU2VydmVyIENB
-MB4XDTI1MDQyMjAwMDAwMFoXDTI2MDUyMzIzNTk1OVowFTETMBEGA1UEAwwKKi5h
-cGloei5jbjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBALe9mF0mS8cM
-OKM1U/n1cA9X18pKfxLC73liyMJbAqzqU/dLmJprUiQv9pUzitZ/5fDexlzYkAyn
-Pfu9mU6PD3q7mT06cLJ448u9CnfZeg0F9TNe6tjb+R4KrazIN/vXCPCYn8b8d/b4
-9O06LrlxTMRSy1lxxYvf6wCMpGEgZD5/BpFOGX/zNCuAjsPCmINU4Vrz7lWG/kqM
-8fgYrZWQyoW3sSMOQuTIDOaEGQizH5E9duMCj5bXgR9ZBaVJtd/yGuzo7GKHABoa
-aqxdYfZF4zGzHArwyOhzIqcE1k8DVBX1nA9jM6Rx7v63xetqRya84/C143zSrfaz
-LGLB91prHCcCAwEAAaOCAvYwggLyMB8GA1UdIwQYMBaAFI2MXsRUrYrhd+mb+ZsF
-4bgBjWHhMB0GA1UdDgQWBBTcVCVo/XoZXBlczuA2TztsqYlC1zAOBgNVHQ8BAf8E
-BAMCBaAwDAYDVR0TAQH/BAIwADAdBgNVHSUEFjAUBggrBgEFBQcDAQYIKwYBBQUH
-AwIwSQYDVR0gBEIwQDA0BgsrBgEEAbIxAQICBzAlMCMGCCsGAQUFBwIBFhdodHRw
-czovL3NlY3RpZ28uY29tL0NQUzAIBgZngQwBAgEwgYQGCCsGAQUFBwEBBHgwdjBP
-BggrBgEFBQcwAoZDaHR0cDovL2NydC5zZWN0aWdvLmNvbS9TZWN0aWdvUlNBRG9t
-YWluVmFsaWRhdGlvblNlY3VyZVNlcnZlckNBLmNydDAjBggrBgEFBQcwAYYXaHR0
-cDovL29jc3Auc2VjdGlnby5jb20wHwYDVR0RBBgwFoIKKi5hcGloei5jboIIYXBp
-aHouY24wggF+BgorBgEEAdZ5AgQCBIIBbgSCAWoBaAB1AJaXZL9VWJet90OHaDcI
-Qnfp8DrV9qTzNm5GpD8PyqnGAAABllv1WxQAAAQDAEYwRAIgfZ0jEf90awhMDRw9
-X7emVlcE0/FPX/jk0d38xH1onW8CIAt8tpNJ+ovg0Y9mrbRmp6r3S8E/3rM5bZQf
-IkobWL86AHYAGYbUxyiqb/66A294Kk0BkarOLXIxD67OXXBBLSVMx9QAAAGWW/Va
-8wAABAMARzBFAiB638KE/nmuqV9D86EqNApWmKOYN2NlgVAuMXmOseblLgIhAIAr
-cK1sMqPGt/qCpeDJcY/VEiOFSnFpLy56q6N4uWxrAHcADleUvPOuqT4zGyyZB7P3
-kN+bwj1xMiXdIaklrGHFTiEAAAGWW/Va9AAABAMASDBGAiEArGXY6k9QZVRgYgNg
-SMuW+maRzil7rM0R/TeZDT4viJECIQCNcZS2obce6zbc664BX7EwD5MPCa6RdWbR
-2LhFx7F/EzANBgkqhkiG9w0BAQsFAAOCAQEAM6kj1dPPJE4j6N/xyr7u4uOIupoY
-5XRy12q3pCUJroEXrREf+5yFLTFMrDkz0tKOs5Xhmk7QRG3uEWGZ62rcsxUfpqyd
-71k0+lwxVc+XS5YZ7zQU7KEPS5r6fnQ599TV5yKuqxikxkSM6xHc4pTR826KPDBA
-3/iCJkrV7kCpOY8Hn7avxj2OBNCydPbncQ6nTUxgu2c24cQFX+U0oNEPpJ+ilJdG
-Nb+lwXktoTBc86moSX6WLoI0d8JX4Yp6WeTpvxizISuE7ajFVTEapKWqGCkxqm1E
-2Ex76LF5iYjchN3CYLRterhjIFzxVC1gtrHoq6kNo+c8TlbKY6FBGmW6cA==
------END CERTIFICATE-----
-)string_literal";
-
-#define NUM_L_LEDS 8
-
-
-// 定义天气查询配置
-typedef struct {
-  String city;              // 查询天气的城市
-  uint delay_time;          // 间隔多少ms查询一次天气
-  SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
-} WeatherConfig;
-
-
-// 定义AI查询配置
-typedef struct {
-  QueueHandle_t serial_queue;  // 从serial中输入
-  QueueHandle_t words_queue;   // 输出给AI
-} AIConfig;
-
-// =============Llight初始化==============
-Light L_Light;
-// ======================================
+const uint NUM_L_LEDS = 8;
 
 // =============队列句柄初始化=============
 QueueHandle_t Serial_Queue = NULL;
 QueueHandle_t Ai_Words_Queue = NULL;
 // ======================================
 
+
 // =============init configs=============
+Light L_Light;
 WIFIConfig Wifi_Config;
 WeatherConfig Weather_Config;
 AIConfig Ai_Config;
@@ -178,140 +89,6 @@ PMData PmData;
 PMSConfig Pms_Config;
 // ======================================
 
-
-// 获取apihz动态ip
-String getApihzHost(String get_api_url, String ca_cert) {
-  String host;
-  if (get_api_url.isEmpty()) {
-    get_api_url = GET_API;
-  }
-  String connect_result = connectHTTPandHTTPS(get_api_url, ca_cert);
-  Serial.printf("DEBUG: getApihzHost connect_result is %s\n", connect_result.c_str());
-
-  if (connect_result.isEmpty()) {
-    Serial.println("⚠️ WARN: connect apihzHost return is NULL!");
-    return host;
-  }
-
-  DynamicJsonDocument doc(16);  // 16B
-  DeserializationError error = deserializeJson(doc, connect_result);
-
-  if (error) {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: JSON解析失败: %s\n", error.c_str());
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect return is: %s\n", connect_result.c_str());
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
-    return host;
-  }
-
-  if (doc["code"] == 200 && !doc["api"].isNull()) {
-    host = doc["api"].as<String>();
-  } else {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: code: %d", doc["code"]);
-    if (!doc["msg"].isNull()) {
-      Serial.printf("; msg: %s\n", doc["msg"]);
-    } else {
-      Serial.printf("; msg: NULL\n");
-    }
-  }
-
-  return host;
-}
-
-// 从apihz中获取天气信息
-void getWeatherFromHost(String host, String ca_cert, String city) {
-  if (host.isEmpty()) {
-    host = HOST_API;
-  }
-
-  String url_string = host + "api/tianqi/tqyb.php" + "?id=" + API_ID + "&key=" + API_KEY + "&sheng=四川&place=" + city + "&day=1&hourtype=1";
-
-  String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
-  Serial.printf("DEBUG: getWeather connect_result is %s\n", connect_result.c_str());
-
-  if (connect_result.isEmpty()) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect return is NULL!");
-    return;
-  }
-
-  DynamicJsonDocument doc(1024);  // 1KB
-  DeserializationError error = deserializeJson(doc, connect_result);
-
-  if (error) {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: JSON解析失败: %s\n", error.c_str());
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: connect return is: %s\n", connect_result.c_str());
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
-    return;
-  }
-
-  if (doc["code"] == 200 && doc["nowinfo"] && !doc["nowinfo"]["temperature"].isNull()) {
-    String temperature = doc["nowinfo"]["temperature"].as<String>();
-    Serial.printf("⚡ INFO: temperature is %s\n", temperature.c_str());
-  } else {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: return code: %d\n", doc["code"]);
-  }
-}
-
-// 获取天气信息
-void getWeather(String city) {
-  String host = getApihzHost(GET_API, "");
-
-  if (host.isEmpty()) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: getWeatherHost return host is NULL");
-    host = HOST_API;
-  }
-
-  getWeatherFromHost(host, "", city);
-}
-
-// 从apihz中获取AI问答结果。
-String getAIAnswerFromHost(String host, String ca_cert, String words) {
-  if (host.isEmpty()) {
-    host = HOST_API;
-  }
-
-  String url_string = host + "api/ai/wxtiny.php" + "?id=" + API_ID + "&key=" + API_KEY + "&words=" + words;
-
-  String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
-
-  if (connect_result.isEmpty()) {
-    return "";
-  }
-  DynamicJsonDocument doc(40960);  // 40KB
-  DeserializationError error = deserializeJson(doc, connect_result);
-
-  if (error) {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: JSON解析失败: %s\n", error.c_str());
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: return is: %s\n", connect_result.c_str());
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
-    return "";
-  }
-
-  if (doc["code"] == 200 && !doc["msg"].isNull()) {
-    String answer = doc["msg"].as<String>();
-    Serial.printf("INFO: answer is %s\n", answer.c_str());
-    return answer;
-  } else {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: return code: %d\n", doc["code"]);
-    return "";
-  }
-}
-
-// 获取AI问答结果。
-String getAIAnswer(String words) {
-  if (words.isEmpty()) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向AI提问的内容为空");
-    return "";
-  }
-  String host = getApihzHost(GET_API, "");
-
-  if (host.isEmpty()) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: getWeatherHost return host is NULL");
-    host = HOST_API;
-  }
-
-  String answer = getAIAnswerFromHost(host, "", words);
-  return answer;
-}
 
 /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
  *                         多线程函数                            *
@@ -389,13 +166,13 @@ void GetAirIq(void *pvParameters) {
       xSemaphoreGive(pms_config->mutex);                                                  // 释放锁
       if (PMS_ACTIVE_MODE == mode) {                                                      // 主动模式，无需定时器，300ms轮询一次
         // 读取PMS9103M传感器数据
-        if (readPMS9103MData(&Serial0, &pmData)) {
+        if (readPMS9103MData(pms_serial, &pmData)) {
           // 打印读取到的数据
           serialPrintAirIqData(&pmData);
         }
       } else if (PMS_PASSIVE_MODE == mode) {  // 被动模式，需要定时器，300ms轮询一次对于被动模式太快，需要使用定时器检查是否需要读取数据。
         // 读取PMS9103M传感器数据
-        if (requestPMSDataInPassiveMode(&Serial0, &pmData)) {
+        if (requestPMSDataInPassiveMode(pms_serial, &pmData)) {
           // 打印读取到的数据
           serialPrintAirIqData(&pmData);
         }
@@ -544,13 +321,18 @@ void setup() {
   SemaphoreHandle_t ai_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t l_light_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t pms_config_mutex = xSemaphoreCreateMutex();
-  // create queue
-  Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
-  Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
-  // check mutex and queue created
+  // check mutex created
   if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == pms_config_mutex) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
     return;
+  }
+
+  // create queue
+  Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
+  Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
+  // check queue created
+  if (NULL == Ai_Words_Queue || NULL == Serial_Queue) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建队列，程序退出!");
   }
 
   CRGB *l_leds = (CRGB *)malloc(sizeof(CRGB) * NUM_L_LEDS);

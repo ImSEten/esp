@@ -1,7 +1,17 @@
+#ifndef NETWORK_CONTROLLER_H
+#define NETWORK_CONTROLLER_H
+
+// ================= HTTPS Settings =================
+const int HTTPS_PORT = 443;
+// ==================================================
+
 #include <Arduino.h>
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <NetworkClientSecure.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <freertos/semphr.h>
 
 // 定义WIFI配置
 typedef struct {
@@ -16,3 +26,5 @@ void connect_WIFI(WIFIConfig *wifi_config);
 String connectHTTP(String url);
 String connectHTTPS(String url, String ca_cert);
 String connectHTTPandHTTPS(String url, String ca_cert);
+
+#endif

@@ -2,7 +2,7 @@
 #include "LightController.h"
 #include <FastLED.h>
 
-const CRGB COLOR_WHITE = {255, 255, 255};
+const CRGB COLOR_WHITE = { 255, 255, 255 };
 
 void setLedColor(Light *light, CRGB rgb) {
   if (NULL == light) {
