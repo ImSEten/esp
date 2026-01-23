@@ -62,10 +62,10 @@ const String HOSTNAME = "esp32s3-n16r8";
 
 
 // =================== 配置你的信息 ===================
-const String CITY = "成都";                                 // 你想要查询的城市（如beijing, shanghai等）
-const uint WEATHER_DELAY_TIME = DELAY_TIME * 10 * 600;                 // 延迟时间
-const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;           I提
-// ==============================================
+const String CITY = "成都";                             // 你想要查询的城市（如beijing, shanghai等）
+const uint WEATHER_DELAY_TIME = DELAY_TIME * 10 * 600;  // 延迟时间
+const uint MAX_AI_WORDS = MAX_SERIAL_INPUT;             // AI提问最大字符长度
+// ==================================================
 
 
 const uint MUTEX_WAIT = DELAY_TIME;  // mutex等待时间，100ms

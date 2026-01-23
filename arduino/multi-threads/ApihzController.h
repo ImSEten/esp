@@ -1,3 +1,6 @@
+#ifndef APIHZ_CONTROLLER_H
+#define APIHZ_CONTROLLER_H
+
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
@@ -77,3 +80,5 @@ void getWeatherFromHost(String host, String ca_cert, String city);
 void getWeather(String city);
 String getAIAnswerFromHost(String host, String ca_cert, String words);
 String getAIAnswer(String words);
+
+#endif
