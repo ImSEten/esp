@@ -9,6 +9,7 @@
 
 #include "Common.h"
 #include "NetworkController.h"
+#include "WeatherController.h"
 
 /****************************************************
  * see: https://www.apihz.cn/api/tqtqyb.html
@@ -76,8 +77,8 @@ typedef struct {
 } AIConfig;
 
 String getApihzHost(String get_api_url, String ca_cert);
-void getWeatherFromHost(String host, String ca_cert, String city);
-void getWeather(String city);
+void getWeatherFromHost(String host, String ca_cert, String city, WeatherData *weatherData);
+void getWeather(String city, WeatherData *weatherData);
 String getAIAnswerFromHost(String host, String ca_cert, String words);
 String getAIAnswer(String words);
 

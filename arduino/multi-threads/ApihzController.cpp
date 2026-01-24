@@ -39,7 +39,7 @@ String getApihzHost(String get_api_url, String ca_cert) {
 }
 
 // 从apihz中获取天气信息
-void getWeatherFromHost(String host, String ca_cert, String city) {
+void getWeatherFromHost(String host, String ca_cert, String city, WeatherData *weatherData) {
   if (host.isEmpty()) {
     host = HOST_API;
   }
@@ -64,16 +64,32 @@ void getWeatherFromHost(String host, String ca_cert, String city) {
     return;
   }
 
-  if (doc["code"] == 200 && doc["nowinfo"] && !doc["nowinfo"]["temperature"].isNull()) {
-    String temperature = doc["nowinfo"]["temperature"].as<String>();
-    Serial.printf("⚡ INFO: temperature is %s\n", temperature.c_str());
+  if (doc["code"] == 200 && doc["nowinfo"]) {
+    if (!doc["nowinfo"]["temperature"].isNull()) {
+      if (xSemaphoreTake(weatherData->mutex, portMAX_DELAY)) {
+        weatherData->temperature = doc["nowinfo"]["temperature"].as<float>();
+        Serial.printf("⚡ INFO: temperature is %.2f\n", weatherData->temperature);
+        xSemaphoreGive(weatherData->mutex);
+      }
+    } else {
+      Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 天气信息temperature为NULL，无法获取温度信息\n");
+    }
+    if (!doc["nowinfo"]["humidity"].isNull()) {
+      if (xSemaphoreTake(weatherData->mutex, portMAX_DELAY)) {
+        weatherData->humidity = doc["nowinfo"]["humidity"].as<int>();
+        Serial.printf("⚡ INFO: humidity is %d\n", weatherData->humidity);
+        xSemaphoreGive(weatherData->mutex);
+      }
+    } else {
+      Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 天气信息humidity为NULL，无法获取湿度信息\n");
+    }
   } else {
     Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: return code: %d\n", doc["code"]);
   }
 }
 
 // 获取天气信息
-void getWeather(String city) {
+void getWeather(String city, WeatherData *weatherData) {
   String host = getApihzHost(GET_API, "");
 
   if (host.isEmpty()) {
@@ -81,7 +97,7 @@ void getWeather(String city) {
     host = HOST_API;
   }
 
-  getWeatherFromHost(host, "", city);
+  getWeatherFromHost(host, "", city, weatherData);
 }
 
 // 从apihz中获取AI问答结果。

@@ -8,8 +8,17 @@
 #include <ESPmDNS.h>
 #include "AirIqController.h"
 #include "Common.h"
+#include "WeatherController.h"
 
-void setupWebServer(String domain_name, PMData *pmData);
+// read only
+typedef struct {
+  PMData *pmData;
+  WeatherData *weatherDataCity;
+  WeatherData *weatherDataHome;
+  SemaphoreHandle_t mutex;  // 互斥锁
+} WebData;
+
+void setupWebServer(String domain_name, WebData *webData);
 void SetupWebServer(void *pvParameters);
 
 #endif

@@ -63,6 +63,6 @@ bool setPMSStandbyMode(HardwareSerial *serial, PMSConfig *pms_config);
 bool requestPMSDataInPassiveMode(HardwareSerial *serial, PMData *pmData);
 bool readPMS9103MData(HardwareSerial *serial, PMData *pmData);
 void serialPrintAirIqData(PMData *pmData);
-DynamicJsonDocument marshelPmData(PMData *pmData);
+JsonDocument marshelPmData(PMData *pmData);
 
 #endif

@@ -8,6 +8,7 @@
 #include "ApihzController.h"
 #include "AirIqController.h"
 #include "NetworkController.h"
+#include "WeatherController.h"
 #include "WebDisplay.h"
 
 
@@ -86,9 +87,14 @@ Light L_Light;
 WIFIConfig Wifi_Config;
 WeatherConfig Weather_Config;
 AIConfig Ai_Config;
-PMData PmData;
 PMSConfig Pms_Config;
 // ======================================
+
+// =============init data=============
+PMData Pm_Data;
+WeatherData Weather_Data;
+WebData Web_Data;
+//====================================
 
 
 /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
@@ -160,15 +166,15 @@ void GetAirIq(void *pvParameters) {
       xSemaphoreGive(pms_config->mutex);                                                  // 释放锁
       if (PMS_ACTIVE_MODE == mode) {                                                      // 主动模式，无需定时器，300ms轮询一次
         // 读取PMS9103M传感器数据
-        if (readPMS9103MData(pms_serial, &PmData)) {
+        if (readPMS9103MData(pms_serial, &Pm_Data)) {
           // 打印读取到的数据
-          serialPrintAirIqData(&PmData);
+          serialPrintAirIqData(&Pm_Data);
         }
       } else if (PMS_PASSIVE_MODE == mode) {  // 被动模式，需要定时器，300ms轮询一次对于被动模式太快，需要使用定时器检查是否需要读取数据。
         // 读取PMS9103M传感器数据
-        if (requestPMSDataInPassiveMode(pms_serial, &PmData)) {
+        if (requestPMSDataInPassiveMode(pms_serial, &Pm_Data)) {
           // 打印读取到的数据
-          serialPrintAirIqData(&PmData);
+          serialPrintAirIqData(&Pm_Data);
         }
       }
     }
@@ -207,7 +213,7 @@ void GetWeather(void *pvParameters) {
     }
     if (weather_config->mutex != NULL && xSemaphoreTake(weather_config->mutex, MUTEX_WAIT)) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
       delay_time = weather_config->delay_time;
-      getWeather(weather_config->city);
+      getWeather(weather_config->city, &Weather_Data);
       xSemaphoreGive(weather_config->mutex);  // 释放锁
       vTaskDelay(pdMS_TO_TICKS(delay_time));
     } else {
@@ -316,8 +322,10 @@ void setup() {
   SemaphoreHandle_t l_light_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t pms_config_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t pm_data_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t weather_data_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t web_data_mutex = xSemaphoreCreateMutex();
   // check mutex created
-  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == pms_config_mutex || NULL == pm_data_mutex) {
+  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == pms_config_mutex || NULL == pm_data_mutex || NULL == weather_data_mutex || NULL == web_data_mutex) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
     return;
   }
@@ -348,9 +356,6 @@ void setup() {
     sleep_status: false,         // 是否为睡眠状态，SET_PIN低电平为睡眠状态
     mutex: pms_config_mutex,     // 锁，获取本结构体中任何成员变量都需等此锁
   };
-  PmData = {
-    mutex: pm_data_mutex,
-  };
 
   // connect wifi config
   Wifi_Config = {
@@ -374,6 +379,24 @@ void setup() {
     words_queue: Ai_Words_Queue,
   };
 
+  // pm data
+  Pm_Data = {
+    mutex: pm_data_mutex,
+  };
+
+  // weather data
+  Weather_Data = {
+    mutex: weather_data_mutex,
+  };
+
+  // data
+  Web_Data = {
+    pmData: &Pm_Data,
+    weatherDataCity: &Weather_Data,
+    weatherDataHome: NULL,
+    mutex: web_data_mutex,
+  };
+
   // 任务句柄（可选）
   TaskHandle_t taskLlightWifiHandle = NULL;
   TaskHandle_t taskGetAirIqHandle = NULL;
@@ -390,7 +413,7 @@ void setup() {
   // if (setPMSWorkMode(pms_serial, &Pms_Config)) {
   //   Serial.println("set PMSWorkMode successfully");
   // }
-  if (requestPMSDataInPassiveMode(pms_serial, &PmData)) {
+  if (requestPMSDataInPassiveMode(pms_serial, &Pm_Data)) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 开机获取PMS9103M空气质量数据失败！");
   }
   // -----------------------灯光控制-----------------------
@@ -404,7 +427,7 @@ void setup() {
   Connect_WIFI((void *)&Wifi_Config);
   // update local time
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-  setupWebServer(HOSTNAME, &PmData);
+  setupWebServer(HOSTNAME, &Web_Data);
   // read from serial
   xTaskCreatePinnedToCore(
     ReadFromSerial, "TaskReadFromSerial", 8192, (void *)&Serial_Queue, 5, &taskReadFromSerialHandle, 1);  // tskNO_AFFINITY表示不限制core
@@ -419,7 +442,7 @@ void setup() {
     GetAIAnswer, "TaskGetAIAnswer", 8192, (void *)&Ai_Config, 3, &taskGetAIAnswerHandle, 1);  // tskNO_AFFINITY表示不限制core
   // SetWebServer
   xTaskCreatePinnedToCore(
-    SetupWebServer, "TaskSetupWebServer", 8192, (void *)&PmData, 2, &taskSetupWebServerHandle, 1);  // tskNO_AFFINITY表示不限制core
+    SetupWebServer, "TaskSetupWebServer", 8192, (void *)&Web_Data, 2, &taskSetupWebServerHandle, 1);  // tskNO_AFFINITY表示不限制core
 }
 
 void loop() {

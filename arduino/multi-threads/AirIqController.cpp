@@ -161,8 +161,8 @@ void serialPrintAirIqData(PMData *pmData) {
   }
 }
 
-DynamicJsonDocument marshelPmData(PMData *pmData) {
-  DynamicJsonDocument pmJson(16);
+JsonDocument marshelPmData(PMData *pmData) {
+  JsonDocument pmJson;
   if (xSemaphoreTake(pmData->mutex, portMAX_DELAY)) {
     // 填充JSON数据
     // 填充JSON数据

@@ -3,19 +3,65 @@
 // Web服务器
 WebServer server(80);
 
-// 处理数据请求的AJAX接口
-void handleDataRequest(PMData *pmData) {
-  // 创建JSON文档
-  DynamicJsonDocument pmJson = marshelPmData(pmData);
-  pmJson["temperature_home"] = 9999;
-  pmJson["humidity_home"] = 9999;
+void merge(JsonVariant dst, JsonVariantConst src)
+{
+  if (src.is<JsonObjectConst>()) {
+    for (JsonPairConst kvp : src.as<JsonObjectConst>()) {
+      if (dst[kvp.key()]) {
+        merge(dst[kvp.key()], kvp.value());
+      }
+      else {
+        dst[kvp.key()] = kvp.value();
+      }
+    }
+  } else {
+    dst.set(src);
+  }
+}
 
+// 处理数据请求的AJAX接口
+void handleDataRequest(WebData *webData) {
+  JsonDocument webJson;
+  if (NULL == webData) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: webData input param is NULL!");
+  }
+  if (NULL != webData->pmData) {
+    // 创建JSON文档
+    JsonDocument pmJson = marshelPmData(webData->pmData);
+    merge(webJson.as<JsonVariant>(), pmJson.as<JsonVariant>());
+  } else {
+    Serial.println("⚠️ WARN: webData->pmData is NULL!");
+  }
+  if (NULL != webData->weatherDataCity) {
+    // 创建JSON文档
+    JsonDocument weatherCityJson = marshelWeatherData(webData->weatherDataCity);
+    for (JsonPairConst kvp : weatherCityJson.as<JsonObjectConst>()) {
+      String key = String(kvp.key().c_str()) + "_city";
+      webJson.as<JsonVariant>()[key] = kvp.value();
+    }
+  } else {
+    Serial.println("⚠️ WARN: webData->weatherDataCity is NULL!");
+    webJson["temperature_city"] = NULL;
+    webJson["humidity_city"] = NULL;
+  }
+  if (NULL != webData->weatherDataHome) {
+    // 创建JSON文档
+    JsonDocument weatherHomeJson = marshelWeatherData(webData->weatherDataHome);
+    for (JsonPairConst kvp : weatherHomeJson.as<JsonObjectConst>()) {
+      String key = String(kvp.key().c_str()) + "_home";
+      webJson.as<JsonVariant>()[key] = kvp.value();
+    }
+  } else {
+    Serial.println("⚠ WARN: webData->weatherDataHome is NULL!");
+    webJson["temperature_home"] = NULL;
+    webJson["humidity_home"] = NULL;
+  }
   // 设置缓存控制
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
   // 发送JSON响应
   String jsonResponse;
-  serializeJson(pmJson, jsonResponse);
+  serializeJson(webJson, jsonResponse);
   server.send(200, "application/json", jsonResponse);
 }
 
@@ -89,7 +135,19 @@ void handleRoot() {
     <h1>实时传感器数据监控</h1>
     <p>无需刷新页面，数据自动更新</p>
   </div>
+
+  <div class="sensor-card">
+    <div class="sensor-label">城市温度</div>
+    <div class="sensor-value" id="temperature_city">--</div>
+    <div class="sensor-label">成都(°C)</div>
+  </div>
   
+  <div class="sensor-card">
+    <div class="sensor-label">城市湿度</div>
+    <div class="sensor-value" id="humidity_city">--</div>
+    <div class="sensor-label">成都(%)</div>
+  </div>
+
   <div class="sensor-card">
     <div class="sensor-label">PM1.0浓度</div>
     <div class="sensor-value" id="pm1_0_atm">--</div>
@@ -109,15 +167,15 @@ void handleRoot() {
   </div>
   
   <div class="sensor-card">
-    <div class="sensor-label">温度</div>
+    <div class="sensor-label">室内温度</div>
     <div class="sensor-value" id="temperature_home">--</div>
-    <div class="sensor-label">(°C)</div>
+    <div class="sensor-label">室内(°C)</div>
   </div>
   
   <div class="sensor-card">
-    <div class="sensor-label">湿度</div>
+    <div class="sensor-label">室内湿度</div>
     <div class="sensor-value" id="humidity_home">--</div>
-    <div class="sensor-label">(%)</div>
+    <div class="sensor-label">室内(%)</div>
   </div>
   
   <div class="status-bar">
@@ -141,6 +199,8 @@ void handleRoot() {
         })
         .then(data => {
           // 更新页面元素
+          document.getElementById('temperature_city').textContent = data.temperature_city.toFixed(1) + ' °C';
+          document.getElementById('humidity_city').textContent = data.humidity_city.toFixed(1) + ' %';
           document.getElementById('pm1_0_atm').textContent = data.pm1_0_atm + ' μg/m³';
           document.getElementById('pm2_5_atm').textContent = data.pm2_5_atm + ' μg/m³';
           document.getElementById('pm10_0_atm').textContent = data.pm10_0_atm + ' μg/m³';
@@ -172,7 +232,7 @@ void handleRoot() {
     // 页面加载完成后开始轮询
     document.addEventListener('DOMContentLoaded', function() {
       fetchData();  // 首次加载
-      setInterval(fetchData, 2000);  // 每2秒轮询一次
+      setInterval(fetchData, 5000);  // 每5秒轮询一次
     });
   </script>
 </body>
@@ -182,14 +242,14 @@ void handleRoot() {
 }
 
 // 设置Web服务器路由
-void setupWebServer(String domain_name, PMData *pmData) {
+void setupWebServer(String domain_name, WebData *webData) {
   // 初始化mDNS服务
   if (!MDNS.begin(domain_name)) {
     Serial.println("mDNS初始化失败");
   }
   server.on("/", HTTP_GET, handleRoot);
-  server.on("/data", HTTP_GET, [pmData]() {
-    handleDataRequest(pmData);
+  server.on("/data", HTTP_GET, [webData]() {
+    handleDataRequest(webData);
   });
   server.begin();
 }
@@ -208,7 +268,7 @@ void SetupWebServer(void *pvParameters) {
   if (NULL == pvParameters) {
     return;
   }
-  PMData *pmData = (PMData *)pvParameters;
+  WebData *webData = (WebData *)pvParameters;
   while (true) {
     // 处理Web服务器请求
     server.handleClient();
