@@ -182,9 +182,9 @@ void handleRoot() {
 }
 
 // 设置Web服务器路由
-void setupWebServer(PMData *pmData) {
+void setupWebServer(String domain_name, PMData *pmData) {
   // 初始化mDNS服务
-  if (!MDNS.begin("esp32-n16r8")) {
+  if (!MDNS.begin(domain_name)) {
     Serial.println("mDNS初始化失败");
   }
   server.on("/", HTTP_GET, handleRoot);

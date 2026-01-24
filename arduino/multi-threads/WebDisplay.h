@@ -9,7 +9,7 @@
 #include "AirIqController.h"
 #include "Common.h"
 
-void setupWebServer(PMData *pmData);
+void setupWebServer(String domain_name, PMData *pmData);
 void SetupWebServer(void *pvParameters);
 
 #endif

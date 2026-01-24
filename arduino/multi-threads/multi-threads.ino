@@ -386,8 +386,12 @@ void setup() {
   // L-light wifi
   FastLED.addLeds<WS2812, PIN_RGB_LED, RGB>(L_Light.leds, L_Light.num_leds);
   setupLight(&L_Light, COLOR_WHITE);
-  if (setPMSWorkMode(pms_serial, &Pms_Config)) {
-    Serial.println("set PMSWorkMode successfully");
+  // // 设置PMS9103M为被动模式
+  // if (setPMSWorkMode(pms_serial, &Pms_Config)) {
+  //   Serial.println("set PMSWorkMode successfully");
+  // }
+  if (requestPMSDataInPassiveMode(pms_serial, &PmData)) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 开机获取PMS9103M空气质量数据失败！");
   }
   // -----------------------灯光控制-----------------------
   xTaskCreatePinnedToCore(
@@ -400,7 +404,7 @@ void setup() {
   Connect_WIFI((void *)&Wifi_Config);
   // update local time
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
-  setupWebServer(&PmData);
+  setupWebServer(HOSTNAME, &PmData);
   // read from serial
   xTaskCreatePinnedToCore(
     ReadFromSerial, "TaskReadFromSerial", 8192, (void *)&Serial_Queue, 5, &taskReadFromSerialHandle, 1);  // tskNO_AFFINITY表示不限制core
