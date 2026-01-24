@@ -161,6 +161,22 @@ void serialPrintAirIqData(PMData *pmData) {
   }
 }
 
+DynamicJsonDocument marshelPmData(PMData *pmData) {
+  DynamicJsonDocument pmJson(16);
+  if (xSemaphoreTake(pmData->mutex, portMAX_DELAY)) {
+    // 填充JSON数据
+    // 填充JSON数据
+    pmJson["pm1_0"] = pmData->pm1_0;
+    pmJson["pm2_5"] = pmData->pm2_5;
+    pmJson["pm10_0"] = pmData->pm10_0;
+    pmJson["pm1_0_atm"] = pmData->pm1_0_atm;
+    pmJson["pm2_5_atm"] = pmData->pm2_5_atm;
+    pmJson["pm10_0_atm"] = pmData->pm10_0_atm;
+    xSemaphoreGive(pmData->mutex);
+  }
+  return pmJson;
+}
+
 // 读取PMS9103M传感器数据的函数
 bool readPMS9103MData(HardwareSerial *serial, PMData *pmData) {
   // PMS9103M数据帧格式：以0x42 0x4D开头，长度32字节

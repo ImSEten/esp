@@ -8,6 +8,7 @@
 #include "ApihzController.h"
 #include "AirIqController.h"
 #include "NetworkController.h"
+#include "WebDisplay.h"
 
 
 /*****************************************************************************************
@@ -95,8 +96,8 @@ PMSConfig Pms_Config;
  -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 
 void LlightWifi(void *pvParameters) {
-  uint connected_brightness = 255;
-  uint connecting_brightness = 120;
+  uint connected_brightness = 120;
+  uint connecting_brightness = 30;
   if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: LlightWifi入参为NULL");
     return;
@@ -147,13 +148,6 @@ void GetAirIq(void *pvParameters) {
     return;
   }
   PMSConfig *pms_config = (PMSConfig *)pvParameters;
-  PMData pmData = {
-    mutex: xSemaphoreCreateMutex(),
-  };
-  if (NULL == pmData.mutex) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
-    return;
-  }
 
   while (true) {
     if (NULL == pms_config) {
@@ -166,15 +160,15 @@ void GetAirIq(void *pvParameters) {
       xSemaphoreGive(pms_config->mutex);                                                  // 释放锁
       if (PMS_ACTIVE_MODE == mode) {                                                      // 主动模式，无需定时器，300ms轮询一次
         // 读取PMS9103M传感器数据
-        if (readPMS9103MData(pms_serial, &pmData)) {
+        if (readPMS9103MData(pms_serial, &PmData)) {
           // 打印读取到的数据
-          serialPrintAirIqData(&pmData);
+          serialPrintAirIqData(&PmData);
         }
       } else if (PMS_PASSIVE_MODE == mode) {  // 被动模式，需要定时器，300ms轮询一次对于被动模式太快，需要使用定时器检查是否需要读取数据。
         // 读取PMS9103M传感器数据
-        if (requestPMSDataInPassiveMode(pms_serial, &pmData)) {
+        if (requestPMSDataInPassiveMode(pms_serial, &PmData)) {
           // 打印读取到的数据
-          serialPrintAirIqData(&pmData);
+          serialPrintAirIqData(&PmData);
         }
       }
     }
@@ -321,8 +315,9 @@ void setup() {
   SemaphoreHandle_t ai_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t l_light_mutex = xSemaphoreCreateMutex();
   SemaphoreHandle_t pms_config_mutex = xSemaphoreCreateMutex();
+  SemaphoreHandle_t pm_data_mutex = xSemaphoreCreateMutex();
   // check mutex created
-  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == pms_config_mutex) {
+  if (NULL == wifi_mutex || NULL == weather_mutex || NULL == ai_mutex || NULL == l_light_mutex || NULL == pms_config_mutex || NULL == pm_data_mutex) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建锁，程序退出!");
     return;
   }
@@ -352,6 +347,9 @@ void setup() {
     standby_status: PMS_NORMAL,  // PMS_STANDBY为待机模式，PMS_NORMAL为正常模式
     sleep_status: false,         // 是否为睡眠状态，SET_PIN低电平为睡眠状态
     mutex: pms_config_mutex,     // 锁，获取本结构体中任何成员变量都需等此锁
+  };
+  PmData = {
+    mutex: pm_data_mutex,
   };
 
   // connect wifi config
@@ -383,6 +381,7 @@ void setup() {
   TaskHandle_t taskGetWeatherHandle = NULL;
   TaskHandle_t taskGetAIQuestionsHandle = NULL;
   TaskHandle_t taskGetAIAnswerHandle = NULL;
+  TaskHandle_t taskSetupWebServerHandle = NULL;
 
   // L-light wifi
   FastLED.addLeds<WS2812, PIN_RGB_LED, RGB>(L_Light.leds, L_Light.num_leds);
@@ -401,6 +400,7 @@ void setup() {
   Connect_WIFI((void *)&Wifi_Config);
   // update local time
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  setupWebServer(&PmData);
   // read from serial
   xTaskCreatePinnedToCore(
     ReadFromSerial, "TaskReadFromSerial", 8192, (void *)&Serial_Queue, 5, &taskReadFromSerialHandle, 1);  // tskNO_AFFINITY表示不限制core
@@ -413,6 +413,9 @@ void setup() {
   // get AIAnswer
   xTaskCreatePinnedToCore(
     GetAIAnswer, "TaskGetAIAnswer", 8192, (void *)&Ai_Config, 3, &taskGetAIAnswerHandle, 1);  // tskNO_AFFINITY表示不限制core
+  // SetWebServer
+  xTaskCreatePinnedToCore(
+    SetupWebServer, "TaskSetupWebServer", 8192, (void *)&PmData, 2, &taskSetupWebServerHandle, 1);  // tskNO_AFFINITY表示不限制core
 }
 
 void loop() {

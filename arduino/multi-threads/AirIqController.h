@@ -2,6 +2,7 @@
 #define AIRIQ_CONTROLLER_H
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 #include <freertos/semphr.h>
@@ -62,5 +63,6 @@ bool setPMSStandbyMode(HardwareSerial *serial, PMSConfig *pms_config);
 bool requestPMSDataInPassiveMode(HardwareSerial *serial, PMData *pmData);
 bool readPMS9103MData(HardwareSerial *serial, PMData *pmData);
 void serialPrintAirIqData(PMData *pmData);
+DynamicJsonDocument marshelPmData(PMData *pmData);
 
 #endif
