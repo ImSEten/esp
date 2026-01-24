@@ -5,6 +5,7 @@
 #include <WebServer.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
+#include <ESPmDNS.h>
 #include "AirIqController.h"
 #include "Common.h"
 
