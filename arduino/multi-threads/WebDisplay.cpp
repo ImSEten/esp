@@ -53,8 +53,8 @@ void handleDataRequest(WebData *webData) {
     }
   } else {
     Serial.println("⚠ WARN: webData->weatherDataHome is NULL!");
-    webJson["temperature_home"] = NULL;
-    webJson["humidity_home"] = NULL;
+    // webJson["temperature_home"] = NULL;
+    // webJson["humidity_home"] = NULL;
   }
   // 设置缓存控制
   server.sendHeader("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -198,6 +198,10 @@ void handleRoot() {
           return response.json();
         })
         .then(data => {
+          // 更新状态信息
+          const updateTime = new Date().toLocaleTimeString();
+          document.getElementById('last-update').textContent = updateTime;
+          document.getElementById('status').textContent = '数据已更新';
           // 更新页面元素
           document.getElementById('temperature_city').textContent = data.temperature_city.toFixed(1) + ' °C';
           document.getElementById('humidity_city').textContent = data.humidity_city.toFixed(1) + ' %';
@@ -206,11 +210,6 @@ void handleRoot() {
           document.getElementById('pm10_0_atm').textContent = data.pm10_0_atm + ' μg/m³';
           document.getElementById('temperature_home').textContent = data.temperature_home.toFixed(1) + ' °C';
           document.getElementById('humidity_home').textContent = data.humidity_home.toFixed(1) + ' %';
-          
-          // 更新状态信息
-          const updateTime = new Date().toLocaleTimeString();
-          document.getElementById('last-update').textContent = updateTime;
-          document.getElementById('status').textContent = '数据已更新';
         })
         .catch(error => {
           console.error('获取数据失败:', error);
