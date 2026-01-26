@@ -13,6 +13,8 @@ const int HTTPS_PORT = 443;
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 
+#include "Common.h"
+
 // 定义WIFI配置
 typedef struct {
   String hostname;          // 本设备在网络中显示的名称
@@ -22,7 +24,7 @@ typedef struct {
   SemaphoreHandle_t mutex;  // 锁，获取本结构体中任何成员变量都需等此锁
 } WIFIConfig;
 
-void connect_WIFI(WIFIConfig *wifi_config);
+bool connect_WIFI(WIFIConfig *wifi_config);
 String connectHTTP(String url);
 String connectHTTPS(String url, String ca_cert);
 String connectHTTPandHTTPS(String url, String ca_cert);

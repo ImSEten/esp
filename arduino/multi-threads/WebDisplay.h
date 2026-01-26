@@ -6,6 +6,7 @@
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
+#include <DNSServer.h>
 #include "AirIqController.h"
 #include "Common.h"
 #include "WeatherController.h"

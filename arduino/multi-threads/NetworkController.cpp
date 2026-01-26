@@ -1,22 +1,35 @@
 #include "NetworkController.h"
 
 // WIFI连接
-void connect_WIFI(WIFIConfig *wifi_config) {
+bool connect_WIFI(WIFIConfig *wifi_config) {
   if (wifi_config == NULL) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: WIFI配置为空，程序退出!");
-    return;
+    return false;
   }
   Serial.printf("\nDEBUG: start to connect to %s", wifi_config->ssid.c_str());
   WiFi.setHostname(wifi_config->hostname.c_str());
+  WiFi.setAutoReconnect(wifi_config->auto_reconnect);
   WiFi.begin(wifi_config->ssid.c_str(), wifi_config->password.c_str());
 
+  // for (int i = 0; i < 10; i++) {
+  //   if (WiFi.status() != WL_CONNECTED) {
+  //     delay(DELAY_TIME * 5);  // 延迟0.5s
+  //     Serial.print(".");
+  //   } else {
+  //     Serial.println("\nDEBUG: WiFi connected");
+  //     Serial.print("DEBUG: ip address: ");
+  //     Serial.println(WiFi.localIP());
+  //     return true;
+  //   }
+  // }
   while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
+    delay(DELAY_TIME * 5);
     Serial.print(".");
   }
   Serial.println("\nDEBUG: WiFi connected");
   Serial.print("DEBUG: ip address: ");
   Serial.println(WiFi.localIP());
+  return true;
 }
 
 // [HTTP]连接

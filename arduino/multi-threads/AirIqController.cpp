@@ -172,6 +172,7 @@ JsonDocument marshelPmData(PMData *pmData) {
     pmJson["pm1_0_atm"] = pmData->pm1_0_atm;
     pmJson["pm2_5_atm"] = pmData->pm2_5_atm;
     pmJson["pm10_0_atm"] = pmData->pm10_0_atm;
+    pmJson["pm2_5_count"] = pmData->count_2_5;
     xSemaphoreGive(pmData->mutex);
   }
   return pmJson;

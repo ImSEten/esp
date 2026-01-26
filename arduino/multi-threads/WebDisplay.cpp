@@ -148,10 +148,16 @@ void handleRoot() {
     <div class="sensor-label">成都(%)</div>
   </div>
 
-  <div class="sensor-card">
+  <!--div class="sensor-card">
     <div class="sensor-label">PM1.0浓度</div>
     <div class="sensor-value" id="pm1_0_atm">--</div>
     <div class="sensor-label">大气颗粒物 (μg/m³)</div>
+  </div-->
+
+  <div class="sensor-card">
+    <div class="sensor-label">PM2.5颗粒数</div>
+    <div class="sensor-value" id="pm2_5_count">--</div>
+    <div class="sensor-label">PM2.5颗粒数 (个/0.1L)</div>
   </div>
   
   <div class="sensor-card">
@@ -160,11 +166,11 @@ void handleRoot() {
     <div class="sensor-label">大气颗粒物 (μg/m³)</div>
   </div>
   
-  <div class="sensor-card">
+  <!--div class="sensor-card">
     <div class="sensor-label">PM10浓度</div>
     <div class="sensor-value" id="pm10_0_atm">--</div>
     <div class="sensor-label">大气颗粒物 (μg/m³)</div>
-  </div>
+  </div-->
   
   <div class="sensor-card">
     <div class="sensor-label">室内温度</div>
@@ -205,9 +211,10 @@ void handleRoot() {
           // 更新页面元素
           document.getElementById('temperature_city').textContent = data.temperature_city.toFixed(1) + ' °C';
           document.getElementById('humidity_city').textContent = data.humidity_city.toFixed(1) + ' %';
-          document.getElementById('pm1_0_atm').textContent = data.pm1_0_atm + ' μg/m³';
+          // document.getElementById('pm1_0_atm').textContent = data.pm1_0_atm + ' μg/m³';
+          document.getElementById('pm2_5_count').textContent = data.pm2_5_count + ' 个/0.1L';
           document.getElementById('pm2_5_atm').textContent = data.pm2_5_atm + ' μg/m³';
-          document.getElementById('pm10_0_atm').textContent = data.pm10_0_atm + ' μg/m³';
+          // document.getElementById('pm10_0_atm').textContent = data.pm10_0_atm + ' μg/m³';
           document.getElementById('temperature_home').textContent = data.temperature_home.toFixed(1) + ' °C';
           document.getElementById('humidity_home').textContent = data.humidity_home.toFixed(1) + ' %';
         })

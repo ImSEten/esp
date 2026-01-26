@@ -59,6 +59,8 @@ const uint SERIAL_PORT = 115200;     // serial 端口
 // ================= WiFi Settings ==================
 const String WIFI_SSID = "OpenWRT_2G";
 const String WIFI_PASSWORD = "183492765";
+// const String WIFI_SSID = "realme GT 2 Pro";
+// const String WIFI_PASSWORD = "999999999";
 const String HOSTNAME = "esp32s3-n16r8";
 // ==================================================
 
@@ -102,8 +104,8 @@ WebData Web_Data;
  -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 
 void LlightWifi(void *pvParameters) {
-  uint connected_brightness = 120;
-  uint connecting_brightness = 30;
+  uint connected_brightness = 30;
+  uint connecting_brightness = 10;
   if (NULL == pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: LlightWifi入参为NULL");
     return;
@@ -134,7 +136,7 @@ void LlightWifi(void *pvParameters) {
       if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {  // 获取锁
         light->brightness = 0;
         setLedBrightness(light);                    // light off
-        vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 5));  // 1s
+        vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 5));  // 0.5s
         light->brightness = connecting_brightness;
         setLedBrightness(light);       // light up
         xSemaphoreGive(light->mutex);  // 释放锁
@@ -146,6 +148,7 @@ void LlightWifi(void *pvParameters) {
   free(light->leds);
   light->leds = NULL;
   delete light;
+  vTaskDelete(NULL);
 }
 
 void GetAirIq(void *pvParameters) {
@@ -178,8 +181,9 @@ void GetAirIq(void *pvParameters) {
         }
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 10 * 60));  // 1min读取一次
+    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 10 * 2));  // 0.2s读取一次
   }
+  vTaskDelete(NULL);
 }
 
 // 在多线程中运行该函数，连接WIFI，并设置自动连接
@@ -189,12 +193,17 @@ void Connect_WIFI(void *pvParameters) {
     return;
   }
   WIFIConfig *wifi_config = (WIFIConfig *)pvParameters;                                   // 类型转换
-  if (wifi_config->mutex != NULL && xSemaphoreTake(wifi_config->mutex, portMAX_DELAY)) {  // portMAX_DELAY表示永久阻塞等锁，占用cpu资源。
-    WiFi.setAutoReconnect(wifi_config->auto_reconnect);
-    xSemaphoreGive(wifi_config->mutex);  // 释放锁
+  // if (wifi_config->mutex != NULL && xSemaphoreTake(wifi_config->mutex, portMAX_DELAY)) {  // portMAX_DELAY表示永久阻塞等锁，占用cpu资源。
+  //   WiFi.setAutoReconnect(wifi_config->auto_reconnect);
+  //   xSemaphoreGive(wifi_config->mutex);  // 释放锁
+  // }
+  while(true) {
+    if (WiFi.status() != WL_CONNECTED) {
+      bool _ = connect_WIFI(wifi_config);
+    }
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME * 10 * 5));  // 5s检查一次wifi状态，否则重连。
   }
-
-  connect_WIFI(wifi_config);
+  vTaskDelete(NULL);
 }
 
 // 在多线程中运行该函数，获取天气信息
@@ -314,6 +323,7 @@ void GetAIQuestions(void *pvParameters) {
 void setup() {
   // start usb serial
   Serial.begin(SERIAL_PORT);
+  Serial.println("start serial!!!");
   Serial0.begin(9600);
   // create mutex;
   SemaphoreHandle_t wifi_mutex = xSemaphoreCreateMutex();
@@ -400,6 +410,7 @@ void setup() {
   // 任务句柄（可选）
   TaskHandle_t taskLlightWifiHandle = NULL;
   TaskHandle_t taskGetAirIqHandle = NULL;
+  TaskHandle_t taskConnect_WIFIHandle = NULL;
   TaskHandle_t taskReadFromSerialHandle = NULL;
   TaskHandle_t taskGetWeatherHandle = NULL;
   TaskHandle_t taskGetAIQuestionsHandle = NULL;
@@ -419,12 +430,14 @@ void setup() {
   // -----------------------灯光控制-----------------------
   xTaskCreatePinnedToCore(
     LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 0);  // tskNO_AFFINITY表示不限制core
-  // //-----------------------传感器-----------------------
+  //-----------------------传感器--------------------------
   xTaskCreatePinnedToCore(
     GetAirIq, "TaskGetAirIq", 8192, (void *)&Pms_Config, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
   // -----------------------Network-----------------------
+  while (!connect_WIFI(&Wifi_Config));
   // Connect wifi
-  Connect_WIFI((void *)&Wifi_Config);
+  xTaskCreatePinnedToCore(
+    Connect_WIFI, "TaskConnect_WIFI", 8192, (void *)&Wifi_Config, 5, &taskConnect_WIFIHandle, 0);  // tskNO_AFFINITY表示不限制core
   // update local time
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
   setupWebServer(HOSTNAME, &Web_Data);
