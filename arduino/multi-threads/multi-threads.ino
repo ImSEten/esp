@@ -192,12 +192,12 @@ void Connect_WIFI(void *pvParameters) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: Connect_WIFI入参为NULL");
     return;
   }
-  WIFIConfig *wifi_config = (WIFIConfig *)pvParameters;                                   // 类型转换
+  WIFIConfig *wifi_config = (WIFIConfig *)pvParameters;  // 类型转换
   // if (wifi_config->mutex != NULL && xSemaphoreTake(wifi_config->mutex, portMAX_DELAY)) {  // portMAX_DELAY表示永久阻塞等锁，占用cpu资源。
   //   WiFi.setAutoReconnect(wifi_config->auto_reconnect);
   //   xSemaphoreGive(wifi_config->mutex);  // 释放锁
   // }
-  while(true) {
+  while (true) {
     if (WiFi.status() != WL_CONNECTED) {
       bool _ = connect_WIFI(wifi_config);
     }
@@ -323,7 +323,6 @@ void GetAIQuestions(void *pvParameters) {
 void setup() {
   // start usb serial
   Serial.begin(SERIAL_PORT);
-  Serial.println("start serial!!!");
   Serial0.begin(9600);
   // create mutex;
   SemaphoreHandle_t wifi_mutex = xSemaphoreCreateMutex();
@@ -434,7 +433,8 @@ void setup() {
   xTaskCreatePinnedToCore(
     GetAirIq, "TaskGetAirIq", 8192, (void *)&Pms_Config, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
   // -----------------------Network-----------------------
-  while (!connect_WIFI(&Wifi_Config));
+  while (!connect_WIFI(&Wifi_Config))
+    ;
   // Connect wifi
   xTaskCreatePinnedToCore(
     Connect_WIFI, "TaskConnect_WIFI", 8192, (void *)&Wifi_Config, 5, &taskConnect_WIFIHandle, 0);  // tskNO_AFFINITY表示不限制core

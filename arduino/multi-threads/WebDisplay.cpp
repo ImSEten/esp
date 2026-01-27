@@ -2,6 +2,7 @@
 
 // Web服务器
 WebServer server(80);
+DNSServer dnsServer;
 
 void merge(JsonVariant dst, JsonVariantConst src)
 {
@@ -250,8 +251,11 @@ void handleRoot() {
 // 设置Web服务器路由
 void setupWebServer(String domain_name, WebData *webData) {
   // 初始化mDNS服务
-  if (!MDNS.begin(domain_name)) {
-    Serial.println("mDNS初始化失败");
+  // if (!MDNS.begin(domain_name)) {
+  //   Serial.println("mDNS初始化失败");
+  // }
+  if (dnsServer.start(53, domain_name, WiFi.localIP())) {
+    Serial.println("DNS初始化失败");
   }
   server.on("/", HTTP_GET, handleRoot);
   server.on("/data", HTTP_GET, [webData]() {
