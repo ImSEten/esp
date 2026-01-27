@@ -113,7 +113,7 @@ void LlightWifi(void *pvParameters) {
   Light *light = (Light *)pvParameters;
   wl_status_t pre_wifi_status = WiFi.status();
   while (true) {
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 5));  // 0.5s
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME * 5));  // 0.5s
     if (WiFi.status() == WL_CONNECTED) {
       if (WiFi.status() == pre_wifi_status) {  // 状态未发生变化，重新轮询
         pre_wifi_status = WiFi.status();
@@ -123,7 +123,7 @@ void LlightWifi(void *pvParameters) {
         if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {  // 获取锁
           light->brightness = connected_brightness;
           setLedBrightness(light);                     // light up
-          vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 30));  // 3s
+          vTaskDelay(pdMS_TO_TICKS(DELAY_TIME * 30));  // 3s
           light->brightness = 0;
           setLedBrightness(light);       // light off
           xSemaphoreGive(light->mutex);  // 释放锁
@@ -136,7 +136,7 @@ void LlightWifi(void *pvParameters) {
       if (xSemaphoreTake(light->mutex, portMAX_DELAY)) {  // 获取锁
         light->brightness = 0;
         setLedBrightness(light);                    // light off
-        vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 5));  // 0.5s
+        vTaskDelay(pdMS_TO_TICKS(DELAY_TIME * 5));  // 0.5s
         light->brightness = connecting_brightness;
         setLedBrightness(light);       // light up
         xSemaphoreGive(light->mutex);  // 释放锁
@@ -161,7 +161,7 @@ void GetAirIq(void *pvParameters) {
   while (true) {
     if (NULL == pms_config) {
       Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAirIq的pms_config为NULL");
-      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
       continue;
     }
     if (NULL != pms_config->mutex && xSemaphoreTake(pms_config->mutex, portMAX_DELAY)) {  // 获取锁
@@ -181,7 +181,7 @@ void GetAirIq(void *pvParameters) {
         }
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT * 10 * 2));  // 0.2s读取一次
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME * 10 * 2));  // 2s读取一次
   }
   vTaskDelete(NULL);
 }
@@ -217,7 +217,7 @@ void GetWeather(void *pvParameters) {
   while (true) {
     if (weather_config == NULL) {
       Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetWeather的weather_config为NULL");
-      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
       continue;
     }
     if (weather_config->mutex != NULL && xSemaphoreTake(weather_config->mutex, MUTEX_WAIT)) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
@@ -244,7 +244,7 @@ void GetAIAnswer(void *pvParameters) {
   while (true) {
     if (ai_config == NULL) {
       Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer的ai_config为NULL");
-      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
       continue;
     }
     if (ai_config->words_queue != NULL && xQueueReceive(ai_config->words_queue, words_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
@@ -253,7 +253,7 @@ void GetAIAnswer(void *pvParameters) {
     } else {  // 未获取到锁
       Serial.println("⚠️ WARN: 无法从队列中获取值！重新等待队列输入");
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
   }
   vTaskDelete(NULL);
 }
@@ -269,7 +269,7 @@ void ReadFromSerial(void *pvParameters) {
   while (true) {
     if (serial_queue == NULL) {
       Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: ReadFromSerial的serial_queue为NULL");
-      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
       continue;
     }
     if (Serial.available() > 0) {
@@ -282,7 +282,7 @@ void ReadFromSerial(void *pvParameters) {
         Serial.printf("DEBUG: 向serial_queue发送数据: %s\n", buffer);
       }
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
   }
   vTaskDelete(NULL);
 }
@@ -299,7 +299,7 @@ void GetAIQuestions(void *pvParameters) {
   while (true) {
     if (ai_config == NULL) {
       Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIQuestions的ai_config为NULL");
-      vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+      vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
       continue;
     }
     Serial.println("DEBUG: waiting for serail_queue input");
@@ -314,7 +314,7 @@ void GetAIQuestions(void *pvParameters) {
     } else {  // 未从serial_queue中获取到数据
       Serial.println("⚠️ WARN: 无法从serial_queue队列中获取值！重新等待队列输入");
     }
-    vTaskDelay(pdMS_TO_TICKS(MUTEX_WAIT));
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
   }
   vTaskDelete(NULL);
 }
