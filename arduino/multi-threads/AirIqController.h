@@ -7,6 +7,8 @@
 #include <freertos/task.h>
 #include <freertos/semphr.h>
 
+#include "Common.h"
+
 
 // 协议命令定义 (参考文档 附录B)
 #define CMD_PASSIVE_ACTIVE_MODE 0xE1  // 主动被动模式切换命令

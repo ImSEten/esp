@@ -252,10 +252,10 @@ void handleRoot() {
 void setupWebServer(String domain_name, WebData *webData) {
   // 初始化mDNS服务
   if (!MDNS.begin(domain_name)) {
-    Serial.println("mDNS初始化失败");
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: mDNS初始化失败");
   }
-  if (dnsServer.start(53, domain_name, WiFi.localIP())) {
-    Serial.println("DNS初始化失败");
+  if (!dnsServer.start(53, domain_name, WiFi.localIP())) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: DNS初始化失败");
   }
   server.on("/", HTTP_GET, handleRoot);
   server.on("/data", HTTP_GET, [webData]() {
@@ -267,10 +267,10 @@ void setupWebServer(String domain_name, WebData *webData) {
 // 初始化SPIFFS文件系统
 bool initSPIFFS() {
   if (!SPIFFS.begin(true)) {
-    Serial.println("SPIFFS initialization failed: Failed to mount SPIFFS");
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: SPIFFS initialization failed: Failed to mount SPIFFS");
     return false;
   }
-  Serial.println("SPIFFS mounted successfully");
+  Serial.println("DEBUG: SPIFFS mounted successfully");
   return true;
 }
 

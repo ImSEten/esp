@@ -152,6 +152,7 @@ bool requestPMSDataInPassiveMode(HardwareSerial *serial, PMData *pmData) {
 }
 
 void serialPrintAirIqData(PMData *pmData) {
+  #ifdef SERIAL_PRINT
   if (xSemaphoreTake(pmData->mutex, portMAX_DELAY)) {  // 获取锁
     Serial.printf("PM1.0 (标准): %d μg/m³\nPM2.5 (标准): %d μg/m³\nPM10.0 (标准): %d μg/m³\n", pmData->pm1_0, pmData->pm2_5, pmData->pm10_0);
     Serial.printf("PM1.0 (大气): %d μg/m³\nPM2.5 (大气): %d μg/m³\nPM10.0 (大气): %d μg/m³\n", pmData->pm1_0_atm, pmData->pm2_5_atm, pmData->pm10_0_atm);
@@ -159,6 +160,7 @@ void serialPrintAirIqData(PMData *pmData) {
     Serial.println("------------------------");
     xSemaphoreGive(pmData->mutex);  // 释放锁
   }
+  #endif
 }
 
 JsonDocument marshelPmData(PMData *pmData) {

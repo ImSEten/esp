@@ -51,8 +51,8 @@
 
 
 // ================ Serial Settings =================
-const uint MAX_SERIAL_INPUT = 1024 * 2;  // serial输入最大值
-const uint SERIAL_PORT = 115200;     // serial 端口
+const uint MAX_SERIAL_INPUT = 1024 * 4;  // serial输入最大值
+const uint SERIAL_PORT = 115200;         // serial 端口
 // ==================================================
 
 
@@ -79,10 +79,10 @@ HardwareSerial *pms_serial = &Serial0;
 const uint NUM_L_LEDS = 8;
 
 // =============队列句柄初始化=============
-const uint Queue_Lenth = 2;
-QueueHandle_t Ai_Words_Queue = NULL;
+// const uint AI_Queue_Lenth = 2;
 QueueHandle_t Serial_Queue = NULL;
-QueueHandle_t Web_Input_Queue = NULL;
+//QueueHandle_t Web_Input_Queue = NULL;
+QueueHandle_t Ai_Words_Queue = NULL;
 // ======================================
 
 
@@ -252,7 +252,7 @@ void GetAIAnswer(void *pvParameters) {
     if (ai_config->words_queue != NULL && xQueueReceive(ai_config->words_queue, words_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
       String words = String(words_char);
       getAIAnswer(words);
-    } else {  // 未获取到锁
+    } else {  // 未获取到队列中的值
       Serial.println("⚠️ WARN: 无法从队列中获取值！重新等待队列输入");
     }
     vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
@@ -296,28 +296,28 @@ void GetAIQuestions(void *pvParameters) {
     return;
   }
   AIConfig *ai_config = (AIConfig *)pvParameters;  // 类型转换
-  char input_char[MAX_AI_WORDS];
+  char serial_char[MAX_SERIAL_INPUT];
   char words_char[MAX_AI_WORDS];
   // 创建队列集（容量需≥监听的队列数量）
-  QueueSetHandle_t queueSet = xQueueCreateSet(2); // 监听2个队列
+  QueueSetHandle_t queueSet = xQueueCreateSet(2);  // 监听2个队列
   if (NULL != ai_config && NULL != ai_config->serial_queue) {
     xQueueAddToSet(ai_config->serial_queue, queueSet);
   }
-  if (NULL != ai_config && NULL != ai_config->web_input_queue) {
-    xQueueAddToSet(ai_config->web_input_queue, queueSet);
-  }
+  // if (NULL != ai_config && NULL != ai_config->web_input_queue) {
+  //   xQueueAddToSet(ai_config->web_input_queue, queueSet);
+  // }
   while (true) {
     if (ai_config == NULL) {
       Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIQuestions的ai_config为NULL");
       vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
       continue;
     }
+    // 阻塞等待任一队列有数据（portMAX_DELAY表示无限等待）
     QueueSetMemberHandle_t activatedQueue = xQueueSelectFromSet(
-      queueSet, 
-      portMAX_DELAY
-    );
-    if (activatedQueue != NULL && xQueueReceive(activatedQueue, input_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
-      String words = String(input_char);
+      queueSet,
+      portMAX_DELAY);
+    if (activatedQueue != NULL && xQueueReceive(activatedQueue, serial_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
+      String words = String(serial_char);
       words.toCharArray(words_char, MAX_AI_WORDS);
       if (ai_config->words_queue != NULL && xQueueSend(ai_config->words_queue, words_char, portMAX_DELAY) != pdPASS) {
         Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向words_queue队列发送数据失败!");
@@ -353,13 +353,13 @@ void setup() {
   }
 
   // create queue
-  Ai_Words_Queue = xQueueCreate(Queue_Lenth * 2, sizeof(char) * MAX_AI_WORDS);
-  Serial_Queue = xQueueCreate(Queue_Lenth, sizeof(char) * MAX_AI_WORDS);
-  Web_Input_Queue = xQueueCreate(Queue_Lenth, sizeof(char) * MAX_AI_WORDS);
+  Ai_Words_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
+  Serial_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
+  //Web_Input_Queue = xQueueCreate(10, sizeof(char) * MAX_AI_WORDS);
   // check queue created
-  if (NULL == Ai_Words_Queue || NULL == Serial_Queue || NULL == Web_Input_Queue) {
+  // if (NULL == Ai_Words_Queue || NULL == Serial_Queue || NULL == Web_Input_Queue) {
+  if (NULL == Ai_Words_Queue || NULL == Serial_Queue) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建队列，程序退出!");
-    return;
   }
 
   CRGB *l_leds = (CRGB *)malloc(sizeof(CRGB) * NUM_L_LEDS);
@@ -400,7 +400,7 @@ void setup() {
   // Ai answer config
   Ai_Config = {
     serial_queue: Serial_Queue,
-    web_input_queue: Web_Input_Queue,
+    web_input_queue: NULL,
     words_queue: Ai_Words_Queue,
   };
 
@@ -440,9 +440,6 @@ void setup() {
   //   Serial.println("set PMSWorkMode successfully");
   // }
   if (requestPMSDataInPassiveMode(pms_serial, &Pm_Data)) {
-    // 打印读取到的数据
-    serialPrintAirIqData(&Pm_Data);
-  } else {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 开机获取PMS9103M空气质量数据失败！");
   }
   // -----------------------灯光控制-----------------------
