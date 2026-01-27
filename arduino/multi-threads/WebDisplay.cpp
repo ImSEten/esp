@@ -138,13 +138,13 @@ void handleRoot() {
   </div>
 
   <div class="sensor-card">
-    <div class="sensor-label">城市温度</div>
+    <div class="sensor-label">天气预报温度</div>
     <div class="sensor-value" id="temperature_city">--</div>
     <div class="sensor-label">成都(°C)</div>
   </div>
   
   <div class="sensor-card">
-    <div class="sensor-label">城市湿度</div>
+    <div class="sensor-label">天气预报湿度</div>
     <div class="sensor-value" id="humidity_city">--</div>
     <div class="sensor-label">成都(%)</div>
   </div>
@@ -155,11 +155,11 @@ void handleRoot() {
     <div class="sensor-label">大气颗粒物 (μg/m³)</div>
   </div-->
 
-  <div class="sensor-card">
+  <!--div class="sensor-card">
     <div class="sensor-label">PM2.5颗粒数</div>
     <div class="sensor-value" id="pm2_5_count">--</div>
     <div class="sensor-label">PM2.5颗粒数 (个/0.1L)</div>
-  </div>
+  </div-->
   
   <div class="sensor-card">
     <div class="sensor-label">PM2.5浓度</div>
@@ -167,11 +167,11 @@ void handleRoot() {
     <div class="sensor-label">大气颗粒物 (μg/m³)</div>
   </div>
   
-  <!--div class="sensor-card">
+  <div class="sensor-card">
     <div class="sensor-label">PM10浓度</div>
     <div class="sensor-value" id="pm10_0_atm">--</div>
     <div class="sensor-label">大气颗粒物 (μg/m³)</div>
-  </div-->
+  </div>
   
   <div class="sensor-card">
     <div class="sensor-label">室内温度</div>
@@ -213,9 +213,9 @@ void handleRoot() {
           document.getElementById('temperature_city').textContent = data.temperature_city.toFixed(1) + ' °C';
           document.getElementById('humidity_city').textContent = data.humidity_city.toFixed(1) + ' %';
           // document.getElementById('pm1_0_atm').textContent = data.pm1_0_atm + ' μg/m³';
-          document.getElementById('pm2_5_count').textContent = data.pm2_5_count + ' 个/0.1L';
+          // document.getElementById('pm2_5_count').textContent = data.pm2_5_count + ' 个/0.1L';
           document.getElementById('pm2_5_atm').textContent = data.pm2_5_atm + ' μg/m³';
-          // document.getElementById('pm10_0_atm').textContent = data.pm10_0_atm + ' μg/m³';
+          document.getElementById('pm10_0_atm').textContent = data.pm10_0_atm + ' μg/m³';
           document.getElementById('temperature_home').textContent = data.temperature_home.toFixed(1) + ' °C';
           document.getElementById('humidity_home').textContent = data.humidity_home.toFixed(1) + ' %';
         })
@@ -251,9 +251,9 @@ void handleRoot() {
 // 设置Web服务器路由
 void setupWebServer(String domain_name, WebData *webData) {
   // 初始化mDNS服务
-  // if (!MDNS.begin(domain_name)) {
-  //   Serial.println("mDNS初始化失败");
-  // }
+  if (!MDNS.begin(domain_name)) {
+    Serial.println("mDNS初始化失败");
+  }
   if (dnsServer.start(53, domain_name, WiFi.localIP())) {
     Serial.println("DNS初始化失败");
   }
