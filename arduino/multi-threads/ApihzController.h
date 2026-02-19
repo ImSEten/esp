@@ -72,9 +72,11 @@ typedef struct {
 
 // 定义AI查询配置
 typedef struct {
-  QueueHandle_t serial_queue;     // 从serial中输入
-  QueueHandle_t web_input_queue;  // 从web对话框中输入
-  QueueHandle_t words_queue;      // 输出给AI
+  QueueHandle_t serial_queue;      // 从serial中输入
+  QueueHandle_t web_input_queue;   // 从web对话框中输入
+  QueueHandle_t web_output_queue;  // 从web对话框中输出结果
+  QueueHandle_t words_queue;       // 输出给AI作为AI的输入
+  QueueHandle_t answer_queue;      // AI输出结果
 } AIConfig;
 
 String getApihzHost(String get_api_url, String ca_cert);

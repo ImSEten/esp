@@ -51,8 +51,7 @@
 
 
 // ================ Serial Settings =================
-const uint MAX_SERIAL_INPUT = 1024 * 2;  // serial输入最大值
-const uint SERIAL_PORT = 115200;     // serial 端口
+const uint SERIAL_PORT = 115200;  // serial 端口
 // ==================================================
 
 
@@ -83,6 +82,8 @@ const uint Queue_Lenth = 2;
 QueueHandle_t Ai_Words_Queue = NULL;
 QueueHandle_t Serial_Queue = NULL;
 QueueHandle_t Web_Input_Queue = NULL;
+QueueHandle_t Web_Output_Queue = NULL;
+QueueHandle_t Ai_Answer_Queue = NULL;
 // ======================================
 
 
@@ -178,8 +179,8 @@ void GetAirIq(void *pvParameters) {
       } else if (PMS_PASSIVE_MODE == mode) {  // 被动模式，需要定时器，300ms轮询一次对于被动模式太快，需要使用定时器检查是否需要读取数据。
         // 读取PMS9103M传感器数据
         if (requestPMSDataInPassiveMode(pms_serial, &Pm_Data)) {
-          // 打印读取到的数据
-          serialPrintAirIqData(&Pm_Data);
+          // // 打印读取到的数据
+          // serialPrintAirIqData(&Pm_Data);
         }
       }
     }
@@ -251,13 +252,48 @@ void GetAIAnswer(void *pvParameters) {
     }
     if (ai_config->words_queue != NULL && xQueueReceive(ai_config->words_queue, words_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
       String words = String(words_char);
-      getAIAnswer(words);
+      String result = getAIAnswer(words);
+      // 将ai result输出给answer_queue
+      char result_char[MAX_AI_WORDS * 2];
+      result.toCharArray(result_char, MAX_AI_WORDS * 2);
+      if (xQueueSend(ai_config->answer_queue, result_char, DELAY_TIME) != pdPASS) {
+        Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向answer_queue队列发送数据失败!");
+      } else {
+        Serial.printf("DEBUG: 向answer_queue发送数据: %s\n", result_char);
+      }
     } else {  // 未获取到锁
-      Serial.println("⚠️ WARN: 无法从队列中获取值！重新等待队列输入");
+      Serial.println("⚠️ WARN: 无法从words_queue队列中获取值！重新等待队列输入");
     }
     vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
   }
   vTaskDelete(NULL);
+}
+
+void DistributeAIAnswers(void *pvParameters) {
+  if (NULL == pvParameters) {
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: DistributeAIAnswers入参为NULL");
+    return;
+  }
+  AIConfig *ai_config = (AIConfig *)pvParameters;  // 类型转换
+  char result_char[MAX_AI_WORDS];
+  while (true) {
+    if (ai_config == NULL) {
+      Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: DistributeAIAnswers入参为NULL");
+      vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
+      continue;
+    }
+    if (ai_config->answer_queue != NULL && xQueueReceive(ai_config->answer_queue, result_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
+      String result = String(result_char);
+      // 将ai result分发出去
+      if (ai_config->answer_queue != NULL && xQueueSend(ai_config->web_output_queue, result_char, DELAY_TIME) == pdPASS) {
+      } else {
+        Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向web_output_queue队列发送数据失败!");
+      }
+    } else {  // 未获取到锁
+      Serial.println("⚠️ WARN: 无法从answer_queue队列中获取值！重新等待队列输入");
+    }
+    vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
+  }
 }
 
 // 在多线程中运行该函数，从serial中获取输入。
@@ -292,14 +328,13 @@ void ReadFromSerial(void *pvParameters) {
 // 在多线程中运行该函数，获取对AI进行提问的问题。即获取输入给AI的input。
 void GetAIQuestions(void *pvParameters) {
   if (NULL == pvParameters) {
-    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIAnswer入参为NULL");
+    Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: GetAIQuestions入参为NULL");
     return;
   }
   AIConfig *ai_config = (AIConfig *)pvParameters;  // 类型转换
   char input_char[MAX_AI_WORDS];
-  char words_char[MAX_AI_WORDS];
   // 创建队列集（容量需≥监听的队列数量）
-  QueueSetHandle_t queueSet = xQueueCreateSet(2); // 监听2个队列
+  QueueSetHandle_t queueSet = xQueueCreateSet(2);  // 监听2个队列
   if (NULL != ai_config && NULL != ai_config->serial_queue) {
     xQueueAddToSet(ai_config->serial_queue, queueSet);
   }
@@ -313,19 +348,16 @@ void GetAIQuestions(void *pvParameters) {
       continue;
     }
     QueueSetMemberHandle_t activatedQueue = xQueueSelectFromSet(
-      queueSet, 
-      portMAX_DELAY
-    );
+      queueSet,
+      portMAX_DELAY);
     if (activatedQueue != NULL && xQueueReceive(activatedQueue, input_char, portMAX_DELAY) == pdPASS) {  // MUTEX_WAIT最大等锁时间，超过MUTEX_WAIT则返回NULL
-      String words = String(input_char);
-      words.toCharArray(words_char, MAX_AI_WORDS);
-      if (ai_config->words_queue != NULL && xQueueSend(ai_config->words_queue, words_char, portMAX_DELAY) != pdPASS) {
+      if (ai_config->words_queue != NULL && xQueueSend(ai_config->words_queue, input_char, portMAX_DELAY) != pdPASS) {
         Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 向words_queue队列发送数据失败!");
       } else {
-        Serial.printf("DEBUG: 向words_queue发送数据: %s\n", words_char);
+        Serial.printf("DEBUG: 向words_queue发送数据: %s\n", input_char);
       }
     } else {  // 未从serial_queue中获取到数据
-      Serial.println("⚠️ WARN: 无法从serial_queue队列中获取值！重新等待队列输入");
+      Serial.println("⚠️ WARN: 无法从activatedQueue队列中获取值！重新等待队列输入");
     }
     vTaskDelay(pdMS_TO_TICKS(DELAY_TIME));
   }
@@ -356,8 +388,10 @@ void setup() {
   Ai_Words_Queue = xQueueCreate(Queue_Lenth * 2, sizeof(char) * MAX_AI_WORDS);
   Serial_Queue = xQueueCreate(Queue_Lenth, sizeof(char) * MAX_AI_WORDS);
   Web_Input_Queue = xQueueCreate(Queue_Lenth, sizeof(char) * MAX_AI_WORDS);
+  Web_Output_Queue = xQueueCreate(Queue_Lenth, sizeof(char) * MAX_AI_WORDS);
+  Ai_Answer_Queue = xQueueCreate(Queue_Lenth * 2, sizeof(char) * MAX_AI_WORDS);
   // check queue created
-  if (NULL == Ai_Words_Queue || NULL == Serial_Queue || NULL == Web_Input_Queue) {
+  if (NULL == Ai_Words_Queue || NULL == Serial_Queue || NULL == Web_Input_Queue || NULL == Web_Output_Queue || NULL == Ai_Answer_Queue) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 无法创建队列，程序退出!");
     return;
   }
@@ -401,7 +435,9 @@ void setup() {
   Ai_Config = {
     serial_queue: Serial_Queue,
     web_input_queue: Web_Input_Queue,
+    web_output_queue: Web_Output_Queue,
     words_queue: Ai_Words_Queue,
+    answer_queue: Ai_Answer_Queue,
   };
 
   // pm data
@@ -419,6 +455,8 @@ void setup() {
     pmData: &Pm_Data,
     weatherDataCity: &Weather_Data,
     weatherDataHome: NULL,
+    web_input_queue: &Web_Input_Queue,
+    web_output_queue: &Web_Output_Queue,
     mutex: web_data_mutex,
   };
 
@@ -430,51 +468,58 @@ void setup() {
   TaskHandle_t taskGetWeatherHandle = NULL;
   TaskHandle_t taskGetAIQuestionsHandle = NULL;
   TaskHandle_t taskGetAIAnswerHandle = NULL;
-  TaskHandle_t taskSetupWebServerHandle = NULL;
+  TaskHandle_t taskHandleWebRequestHandle = NULL;
+  TaskHandle_t taskDistributeAIAnswersHandle = NULL;
 
   // L-light wifi
+  // ----------------------L灯WIFI控制----------------------
   FastLED.addLeds<WS2812, PIN_RGB_LED, RGB>(L_Light.leds, L_Light.num_leds);
   setupLight(&L_Light, COLOR_WHITE);
   // // 设置PMS9103M为被动模式
   // if (setPMSWorkMode(pms_serial, &Pms_Config)) {
   //   Serial.println("set PMSWorkMode successfully");
   // }
+  // ----------------------开机获取PMS9103M空气质量数据----------------------
   if (requestPMSDataInPassiveMode(pms_serial, &Pm_Data)) {
-    // 打印读取到的数据
-    serialPrintAirIqData(&Pm_Data);
+    // // 打印读取到的数据
+    // serialPrintAirIqData(&Pm_Data);
   } else {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 开机获取PMS9103M空气质量数据失败！");
   }
   // -----------------------灯光控制-----------------------
   xTaskCreatePinnedToCore(
     LlightWifi, "TaskLlightWifi", 8192, (void *)&L_Light, 5, &taskLlightWifiHandle, 0);  // tskNO_AFFINITY表示不限制core
-  //-----------------------传感器--------------------------
+  // -----------------------传感器-----------------------
   xTaskCreatePinnedToCore(
     GetAirIq, "TaskGetAirIq", 8192, (void *)&Pms_Config, 5, &taskGetAirIqHandle, 0);  // tskNO_AFFINITY表示不限制core
   // -----------------------Network-----------------------
   while (!connect_WIFI(&Wifi_Config))
     ;
-  // Connect wifi
+  // ----------------------WiFi控制----------------------
   xTaskCreatePinnedToCore(
     Connect_WIFI, "TaskConnect_WIFI", 8192, (void *)&Wifi_Config, 5, &taskConnect_WIFIHandle, 0);  // tskNO_AFFINITY表示不限制core
   // update local time
   configTime(8 * 3600, 0, "pool.ntp.org", "time.nist.gov");
+  // ----------------------设置web服务端----------------------
   setupWebServer(HOSTNAME, &Web_Data);
-  // read from serial
-  xTaskCreatePinnedToCore(
-    ReadFromSerial, "TaskReadFromSerial", 8192, (void *)&Serial_Queue, 5, &taskReadFromSerialHandle, 1);  // tskNO_AFFINITY表示不限制core
-  // get weather
+  // // ----------------------从serial中读取数据----------------------
+  // xTaskCreatePinnedToCore(
+  //   ReadFromSerial, "TaskReadFromSerial", 8192, (void *)&Serial_Queue, 5, &taskReadFromSerialHandle, 1);  // tskNO_AFFINITY表示不限制core
+  // ----------------------从apihz中获取天气信息----------------------
   xTaskCreatePinnedToCore(
     GetWeather, "TaskGetWeather", 8192, (void *)&Weather_Config, 4, &taskGetWeatherHandle, 1);  // tskNO_AFFINITY表示不限制core
-  // get AIQuestions
+  // ----------------------获取询问AI的问题----------------------
   xTaskCreatePinnedToCore(
     GetAIQuestions, "TaskGetAIQuestions", 8192, (void *)&Ai_Config, 3, &taskGetAIQuestionsHandle, 1);  // tskNO_AFFINITY表示不限制core
-  // get AIAnswer
+  // ----------------------获取AI结果----------------------
   xTaskCreatePinnedToCore(
     GetAIAnswer, "TaskGetAIAnswer", 8192, (void *)&Ai_Config, 3, &taskGetAIAnswerHandle, 1);  // tskNO_AFFINITY表示不限制core
+  // ----------------------分发AI结果----------------------
+  xTaskCreatePinnedToCore(
+    DistributeAIAnswers, "TaskDistributeAIAnswers", 8192, (void *)&Ai_Config, 3, &taskDistributeAIAnswersHandle, 1);  // tskNO_AFFINITY表示不限制core
   // SetWebServer
   xTaskCreatePinnedToCore(
-    SetupWebServer, "TaskSetupWebServer", 8192, (void *)&Web_Data, 2, &taskSetupWebServerHandle, 1);  // tskNO_AFFINITY表示不限制core
+    HandleWebRequest, "TaskHandleWebRequest", 8192, (void *)&Web_Data, 2, &taskHandleWebRequestHandle, 1);  // tskNO_AFFINITY表示不限制core
 }
 
 void loop() {

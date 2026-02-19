@@ -16,10 +16,12 @@ typedef struct {
   PMData *pmData;
   WeatherData *weatherDataCity;
   WeatherData *weatherDataHome;
-  SemaphoreHandle_t mutex;  // 互斥锁
+  QueueHandle_t *web_input_queue;   // 从web对话框中输入
+  QueueHandle_t *web_output_queue;  // 从web对话框中输入
+  SemaphoreHandle_t mutex;          // 互斥锁
 } WebData;
 
 void setupWebServer(String domain_name, WebData *webData);
-void SetupWebServer(void *pvParameters);
+void HandleWebRequest(void *pvParameters);
 
 #endif
