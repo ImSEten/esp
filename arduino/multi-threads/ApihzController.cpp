@@ -105,8 +105,8 @@ String getAIAnswerFromHost(String host, String ca_cert, String words) {
   if (host.isEmpty()) {
     host = HOST_API;
   }
-
-  String url_string = host + "api/ai/wxtiny.php" + "?id=" + API_ID + "&key=" + API_KEY + "&words=" + words;
+  // type: 1=Qwen3.5-4B，2=Qwen3-8B，3=DeepSeek-R1-0528-Qwen3-8B，4=GLM-Z1-9B-0414，5=Qwen/Qwen2.5-7B-Instruct，6=THUDM/GLM-4-9B-0414。例：type=1
+  String url_string = host + "api/ai/litejhwb.php" + "?id=" + API_ID + "&key=" + API_KEY + "&type=1" + "&words=" + words;
 
   String connect_result = connectHTTPandHTTPS(url_string, ca_cert);
 
@@ -122,15 +122,16 @@ String getAIAnswerFromHost(String host, String ca_cert, String words) {
     Serial.println("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: 请检查API返回格式或增大内存");
     return "";
   }
-
-  if (doc["code"] == 200 && !doc["msg"].isNull()) {
-    String answer = doc["msg"].as<String>();
-    Serial.printf("INFO: answer is %s\n", answer.c_str());
-    return answer;
-  } else {
-    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: [HTTPS]请求失败: return code: %d\n", doc["code"]);
+  String code = doc["code"].as<String>();
+  if (doc["msg"].isNull()) {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: AI Answer return msg is NULL\n");
     return "";
   }
+  String answer = doc["msg"].as<String>();
+  if (code == "400") {
+    Serial.printf("⚠️⚠️⚠️ ERROR ⚠️⚠️⚠️: AI Answer return code: %s, error is: %s\n", code.c_str(), answer.c_str());
+  }
+  return answer;
 }
 
 // 获取AI问答结果。

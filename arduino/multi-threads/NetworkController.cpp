@@ -40,6 +40,8 @@ String connectHTTP(String url) {
   }
 
   HTTPClient http;
+  http.setConnectTimeout(int32_t(CONNECT_TIMEOUT));
+  http.setTimeout(uint16_t(CONNECT_TIMEOUT));
   Serial.print("DEBUG: [HTTP] begin...\n");
   // configure traged server and url
   //http.begin("https://www.howsmyssl.com/a/check", ca); //HTTPS
@@ -90,6 +92,8 @@ String connectHTTPS(String url, String ca_cert) {
   {
     // Add a scoping block for HTTPClient https to make sure it is destroyed before delete client
     HTTPClient https;
+    https.setConnectTimeout(int32_t(CONNECT_TIMEOUT));
+    https.setTimeout(uint16_t(CONNECT_TIMEOUT));
     if (https.begin(*client, url)) {
       Serial.println("DEBUG: [HTTPS] GET...");
       httpCode = https.GET();

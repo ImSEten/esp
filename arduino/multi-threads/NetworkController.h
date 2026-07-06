@@ -15,6 +15,8 @@ const int HTTPS_PORT = 443;
 
 #include "Common.h"
 
+const uint CONNECT_TIMEOUT = 30 * 1000;        // http/https连接超时时间，默认30s
+
 // 定义WIFI配置
 typedef struct {
   String hostname;          // 本设备在网络中显示的名称
